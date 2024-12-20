@@ -221,10 +221,14 @@ class RobotDescription(ABC):
     eeff_frame_name : List[str] = None
 
     def __post_init__(self):
-        # Model path
-        self.model_path : str = ""
+        # MuJoCo model path
+        self.mjcf_path : str = ""
+        # Pinocchio model path (if loaded)
+        self.urdf_path : str = ""
         # Scene path
         self.scene_path : str = ""
+        # Nominal configuration
+        self.q0 : np.ndarray = None 
 
 @dataclass
 class QuadrupedDescription(RobotDescription):

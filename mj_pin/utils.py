@@ -34,7 +34,7 @@ def _path_scene_with_floor(path_mjcf : str) -> str:
     
     return scene_path
 
-def load_mj(robot_name : str, with_floor : bool = True):
+def load_mj(robot_name : str, with_floor : bool = True, floating_base : bool = False):
     # Get robot model file path
     robot_mj_description_module = importlib.import_module(f"robot_descriptions.{robot_name}_mj_description")
     path_mjcf = robot_mj_description_module.MJCF_PATH
@@ -43,6 +43,7 @@ def load_mj(robot_name : str, with_floor : bool = True):
 
     # Load description if exists
     desc = RobotDescriptionFactory.get(robot_name)
+    if not desc.name: desc.name = robot_name
 
     # Load model
     scene_mjcf = ""
@@ -52,8 +53,12 @@ def load_mj(robot_name : str, with_floor : bool = True):
         desc.scene_path = scene_mjcf
     else:
         mj_model = mujoco.MjModel.from_xml_path(path_mjcf)
-        
-    desc.model_path = path_mjcf
+
+    # Save keyframe is exists
+    if mj_model.nkey > 0:
+        desc.q0 = mj_model.key_qpos[0].copy()
+
+    desc.mjcf_path = path_mjcf
 
     return mj_model, desc
 
@@ -155,19 +160,32 @@ def pin_frame_pos(pin_model, pin_data, frame_name: str) -> np.ndarray:
 def load_mj_pin(
         robot_name : str,
         with_floor : bool = True,
-        copy_motor_param : bool = True
+        from_mjcf : bool = True,
+        copy_motor_param : bool = True,
         ):
     # Get robot model file path
     mj_model, desc = load_mj(robot_name, with_floor)
     # Path without scene
-    path_mjcf = desc.model_path
+    path_mjcf = desc.mjcf_path
 
     # Load model (without scene)
-    pin_model = pin.buildModelFromMJCF(path_mjcf)
+    if from_mjcf:
+        pin_model = pin.buildModelFromMJCF(path_mjcf)
+    else:
+        # Get robot model file path
+        robot_mj_description_module = importlib.import_module(f"robot_descriptions.{robot_name}_description")
+        urdf_path = robot_mj_description_module.URDF_PATH
+        desc.urdf_path = urdf_path
+
+        floating_base = (mj_model.jnt_type == 0).any()
+        if floating_base:
+            pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=pin.JointModelFreeFlyer())
+        else:
+            pin_model = pin.buildModelFromUrdf(urdf_path)
 
     # Update pinocchio model
     if desc:
-        desc.model_path = path_mjcf
+        desc.mjcf_path = path_mjcf
         # Add end effecor frames from description to pinocchio model
         add_frames_from_mujoco(pin_model, mj_model, desc.eeff_frame_name)
 
