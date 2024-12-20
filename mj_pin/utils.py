@@ -183,6 +183,13 @@ def load_mj_pin(
         else:
             pin_model = pin.buildModelFromUrdf(urdf_path)
 
+    # Add keyframe
+    if mj_model.nkey > 0:
+        mj_kf = mj_model.key_qpos[0]
+        pin_model.referenceConfigurations["home"] = mj_kf
+
+    pin_model.name = robot_name
+
     # Update pinocchio model
     if desc:
         desc.mjcf_path = path_mjcf
