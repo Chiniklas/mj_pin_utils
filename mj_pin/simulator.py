@@ -32,6 +32,7 @@ class Simulator:
         self.viewer_dt = viewer_dt
 
         self.mj_model = mj_model
+        self.mj_model.opt.timestep = sim_dt
         self.mj_data = mujoco.MjData(self.mj_model)
         mujoco.mj_resetDataKeyframe(self.mj_model, self.mj_data, 0)
 

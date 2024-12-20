@@ -7,7 +7,7 @@ import os
 import importlib
 
 from mj_pin.abstract import Controller
-from mj_pin.robot_description import RobotDescriptionFactory
+from mj_pin.robot_description import RobotDescriptionFactory, RobotDescription
 
 MJ2PIN_QUAT = [1,2,3,0]
 PIN2MJ_QUAT = [3,0,1,2]
@@ -34,7 +34,10 @@ def _path_scene_with_floor(path_mjcf : str) -> str:
     
     return scene_path
 
-def load_mj(robot_name : str, with_floor : bool = True, floating_base : bool = False):
+def load_mj(
+        robot_name : str,
+        with_floor : bool = True,
+        desc : RobotDescription = None):
     # Get robot model file path
     robot_mj_description_module = importlib.import_module(f"robot_descriptions.{robot_name}_mj_description")
     path_mjcf = robot_mj_description_module.MJCF_PATH
@@ -42,7 +45,7 @@ def load_mj(robot_name : str, with_floor : bool = True, floating_base : bool = F
     assert os.path.exists(path_mjcf), f"MJCF file not found. Invalid robot name {robot_name}"
 
     # Load description if exists
-    desc = RobotDescriptionFactory.get(robot_name)
+    desc = RobotDescriptionFactory.get(robot_name) if desc is None else desc
     if not desc.name: desc.name = robot_name
 
     # Load model
@@ -61,6 +64,71 @@ def load_mj(robot_name : str, with_floor : bool = True, floating_base : bool = F
     desc.mjcf_path = path_mjcf
 
     return mj_model, desc
+
+def load_pin(
+    robot_name : str,
+    from_mjcf : bool = False,
+    floating_base_quat : bool = True,
+    floating_base_euler : bool = False,
+    desc : RobotDescription = None
+    ):
+
+    desc = RobotDescriptionFactory.get(robot_name) if desc is None else desc
+
+    # Load model from MJCF (without scene)
+    if from_mjcf:
+        robot_description_module = importlib.import_module(f"robot_descriptions.{robot_name}_mj_description")
+        path_mjcf = robot_description_module.MJCF_PATH
+
+        if floating_base_euler:
+            print("Cannot load pin model from MJCF with euler base link representation")
+        pin_model = pin.buildModelFromMJCF(path_mjcf)
+
+    # Load model from URDF
+    else:
+        # Get robot model file path
+        robot_description_module = importlib.import_module(f"robot_descriptions.{robot_name}_description")
+        urdf_path = robot_description_module.URDF_PATH
+        desc.urdf_path = urdf_path
+
+        if floating_base_quat:
+            root = pin.JointModelFreeFlyer()
+            pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
+        elif floating_base_euler:
+            root = pin.JointModelComposite(2)
+            root.addJoint(pin.JointModelTranslation())
+            root.addJoint(pin.JointModelSphericalZYX())
+            pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
+        else:
+            pin_model = pin.buildModelFromUrdf(urdf_path)
+
+    pin_model.name = robot_name
+    
+    return pin_model, desc
+
+def load_mj_pin(
+        robot_name : str,
+        with_floor : bool = True,
+        from_mjcf : bool = True,
+        floating_base_quat : bool = True,
+        floating_base_euler : bool = False,
+        copy_motor_param : bool = True,
+        ):
+    # Get robot model file path
+    mj_model, desc = load_mj(robot_name, with_floor)
+
+    pin_model, desc = load_pin(robot_name, from_mjcf, floating_base_quat, floating_base_euler, desc)
+
+    # Add keyframe
+    if mj_model.nkey > 0:
+        mj_kf = mj_model.key_qpos[0]
+        pin_model.referenceConfigurations["home"] = mj_kf
+
+    # Update motor paramters (damping, friction, armature)
+    if copy_motor_param:
+        copy_motor_parameters(pin_model, mj_model)
+
+    return mj_model, pin_model, desc
 
 def mj_joint_name2id(mj_model) -> Dict[str, int]:
     """
@@ -156,73 +224,6 @@ def pin_frame_pos(pin_model, pin_data, frame_name: str) -> np.ndarray:
     # Get frame position in the world frame
     frame_pos = pin_data.oMf[frame_id].translation
     return frame_pos
-
-def load_mj_pin(
-        robot_name : str,
-        with_floor : bool = True,
-        from_mjcf : bool = True,
-        copy_motor_param : bool = True,
-        ):
-    # Get robot model file path
-    mj_model, desc = load_mj(robot_name, with_floor)
-    # Path without scene
-    path_mjcf = desc.mjcf_path
-
-    # Load model (without scene)
-    if from_mjcf:
-        pin_model = pin.buildModelFromMJCF(path_mjcf)
-    else:
-        # Get robot model file path
-        robot_mj_description_module = importlib.import_module(f"robot_descriptions.{robot_name}_description")
-        urdf_path = robot_mj_description_module.URDF_PATH
-        desc.urdf_path = urdf_path
-
-        floating_base = (mj_model.jnt_type == 0).any()
-        if floating_base:
-            pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=pin.JointModelFreeFlyer())
-        else:
-            pin_model = pin.buildModelFromUrdf(urdf_path)
-
-    # Add keyframe
-    if mj_model.nkey > 0:
-        mj_kf = mj_model.key_qpos[0]
-        pin_model.referenceConfigurations["home"] = mj_kf
-
-    pin_model.name = robot_name
-
-    # Update pinocchio model
-    if desc:
-        desc.mjcf_path = path_mjcf
-        # Add end effecor frames from description to pinocchio model
-        add_frames_from_mujoco(pin_model, mj_model, desc.eeff_frame_name)
-
-    # Update motor paramters (damping, friction, armature)
-    if copy_motor_param:
-        copy_motor_parameters(pin_model, mj_model)
-
-    return mj_model, pin_model, desc
-
-def _path_scene_with_floor(path_mjcf : str) -> str:
-    """
-    Get file path to a mujoco model with floor.
-    """
-    file_dir, _ = os.path.split(path_mjcf)
-    scene_file_name = "scene.xml"
-    scene_path = os.path.join(file_dir, scene_file_name)
-
-    if not os.path.exists(scene_path):
-        raise FileNotFoundError(f"{scene_path} not found.")
-    
-    # Process scene file
-    with open(scene_path, "r") as f:
-        # Remove compiler if exists in scene file
-        new_file = [line for line in 
-                    filter(lambda str : "<compiler" not in str, f.readlines())]
-    
-    with open(scene_path, "w") as f:
-        f.writelines(new_file)
-    
-    return scene_path
 
 def mj_joint_name2id(mj_model) -> Dict[str, int]:
     """

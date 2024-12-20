@@ -14,8 +14,6 @@ class RobotDescriptionFactory:
 
     @staticmethod
     def get(robot_name : str) -> RobotDescription | Any:
-        description = RobotDescriptionFactory.AVAILABLE_ROBOT.get(robot_name, RobotDescription(""))
-        if description is None:
-            print("Robot description not found.")
+        description = RobotDescriptionFactory.AVAILABLE_ROBOT.get(robot_name, RobotDescription(robot_name))
         
         return description
