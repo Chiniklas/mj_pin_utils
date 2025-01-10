@@ -18,7 +18,6 @@ setup(
     python_requires='>=3.10',   # Minimum Python version
     install_requires=[
         "mujoco",  # Example dependencies
-        "pinocchio",
         "robot_descriptions"
     ],
 )
