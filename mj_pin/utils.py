@@ -276,7 +276,7 @@ def mj_2_pin_state(q_wxyz: np.ndarray) -> np.ndarray:
     Convert quaternion format:
     qw, qx, qy, qz -> qx, qy, qz, qw
     """
-    q_xyzw = q_wxyz
+    q_xyzw = q_wxyz.copy()
     q_xyzw[3:7] = np.take(
         q_wxyz[3:7],
         MJ2PIN_QUAT,
@@ -290,7 +290,7 @@ def pin_2_mj_state(q_xyzw: np.ndarray) -> np.ndarray:
     Convert quaternion format:
     qx, qy, qz, qw -> qw, qx, qy, qz
     """
-    q_wxyz = q_xyzw
+    q_wxyz = q_xyzw.copy()
     q_wxyz[3:7] = np.take(
         q_xyzw[3:7],
         PIN2MJ_QUAT,
@@ -315,7 +315,8 @@ def mj_2_pin_qv(q_mj : np.ndarray, v_mj : np.ndarray) -> np.ndarray:
     # v_b = [p] @ R @ w_W + R @ v_W
     #     = [p] @ R @ R.T @ w_B + R @ v_W
     #     = [p] @ w_B + R @ v_W
-    v_mj[:3] = p_skew @ v_mj[3:6] + R @ v_mj[:3]
+    v_pin = v_mj.copy()
+    v_pin[:3] = p_skew @ v_mj[3:6] + R @ v_mj[:3]
     return q_pin, v_mj
 
 def pin_2_mj_qv(q_pin : np.ndarray, v_pin : np.ndarray) -> np.ndarray:
@@ -333,9 +334,9 @@ def pin_2_mj_qv(q_pin : np.ndarray, v_pin : np.ndarray) -> np.ndarray:
     p_skew = get_skew_sim_mat(p)
 
     # v_W = [p] @ R @ w_b + R @ v_b
-    v_pin[:3] = p_skew @ R @ v_pin[3:6] + R @ v_pin[:3]
-    return q_mj, v_pin
-
+    v_mj = v_pin.copy()
+    v_mj[:3] = p_skew @ R @ v_pin[3:6] + R @ v_pin[:3]
+    return q_mj, v_mj
 
 class PinController(Controller):
 

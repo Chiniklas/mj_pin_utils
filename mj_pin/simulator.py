@@ -1,4 +1,5 @@
 import time
+from typing import Optional
 import numpy as np
 import mujoco
 import mujoco.viewer
@@ -39,7 +40,7 @@ class Simulator:
         self.joint_name2act_id = mj_joint_name2act_id(self.mj_model)
 
         # Threading for physics and viewer
-        self.locker = threading.Lock()
+        self.locker = threading.RLock()
 
     def reset(
         self,
@@ -52,8 +53,12 @@ class Simulator:
             mujoco.mj_resetDataKeyframe(self.mj_model, self.mj_data, 0)
 
         v_mj = np.zeros(self.mj_model.nv) if v is None else v
-        if pin_format: q_mj, v_mj = pin_2_mj_qv(q, v_mj)
-        self._set_state(q_mj, v_mj)
+        if pin_format: 
+            q_mj, v_mj = pin_2_mj_qv(q, v_mj)
+            self._set_state(q_mj, v_mj)
+        else:
+            self._set_state(q, v)
+
 
     def _set_state(self, q_mj : np.ndarray, v_mj : np.ndarray):
         self.mj_data.qpos = q_mj.copy()
@@ -124,11 +129,10 @@ class Simulator:
 
     def _run_physics(self):
         while not(self.stop_sim):
+            self._stop_sim()
             self.locker.acquire()
             physics_time = self._physics_step()
             self.locker.release()
-
-            self._stop_sim()
 
             if self.viewer:
                 sleep_time = self.sim_dt - physics_time
@@ -228,3 +232,55 @@ class Simulator:
 
         if self.data_recorder:
             self.data_recorder.save()
+        
+    def visualize_trajectory(self,
+        joint_traj: np.ndarray,
+        time_traj: Optional[np.ndarray] = None,
+        visual_callback : VisualCallback = None,
+        ) -> None:
+        """
+        Visualize a joint trajectory using the MuJoCo viewer.
+
+        Args:
+            joint_traj (np.ndarray): The joint trajectory to visualize. Shape: (N, nq).
+            time_traj (np.ndarray): The corresponding time trajectory. Shape: (N,).
+        """
+
+        N = len(joint_traj)
+        if time_traj is None:
+            time_traj = np.linspace(0, N * self.sim_dt, N+1)
+
+        assert joint_traj.shape[0] == len(time_traj), \
+            "The number of trajectory points must match the time trajectory length."
+        assert joint_traj.shape[1] == self.mj_model.nq, \
+            f"The trajectory dimension must match the model's nq ({self.mj_model.nq})."
+
+
+        self.setup(0., viewer=True, controller=None, data_recorder=None, visual_callback=visual_callback)
+        dt_traj = np.diff(time_traj, append=0.)
+        print(f"Visualizing trajectory...")
+        try:
+            while self.viewer.is_running():
+
+                for qpos, dt in zip(joint_traj, dt_traj):
+
+                    # Set the state
+                    self.mj_data.qpos[:] = qpos
+                    mujoco.mj_forward(self.mj_model, self.mj_data)
+
+                    # Update the viewer
+                    render_time = self._viewer_step()
+
+                    # Sleep to match the time trajectory
+                    sleep_time = max(dt - render_time, 0.)
+                    time.sleep(sleep_time)
+
+                time.sleep(1)
+
+        except KeyboardInterrupt:
+            print("\nTrajectory visualization interrupted.")
+
+        finally:
+            self.viewer.close()
+            self.viewer = None
+            print("Trajectory visualization complete.")
