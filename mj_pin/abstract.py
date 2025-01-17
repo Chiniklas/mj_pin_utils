@@ -1,10 +1,13 @@
+import time
 import mujoco
+import threading
 import numpy as np
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Callable, Any
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from functools import wraps
 from datetime import datetime
+from .ext.keyboard import KBHit
 
 def call_every(func):
     """
@@ -50,6 +53,52 @@ class Controller(ABC):
         sim_step : int,
         mj_data,
     ) -> Dict[str, float]:
+        pass
+
+class Keyboard(ABC):
+    KEYBOARD_UPDATE_FREQ = 50
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.keyboard = KBHit()
+        self.last_key: str = ""
+        self.stop = False
+        self.update_thread = None
+        self._start_update_thread()
+
+    def _keyboard_thread(self):
+        """
+        Update base goal location based on keyboard events.
+        """
+        while not self.stop:
+            if self.last_key == '\n':  # ENTER
+                break
+            if self.keyboard.kbhit():
+                self.last_key = self.keyboard.getch()
+            else:
+                self.last_key = ""
+
+            self.on_key()
+            time.sleep(1. / Keyboard.KEYBOARD_UPDATE_FREQ)
+
+    def _start_update_thread(self):
+        if self.update_thread is None or not self.update_thread.is_alive():
+            self.update_thread = threading.Thread(target=self._keyboard_thread)
+            self.update_thread.start()
+
+    def _stop_update_thread(self):
+        self.last_key = '\n'
+        self.stop = True
+        if self.update_thread is not None and self.update_thread.is_alive():
+            self.update_thread.join()
+        self.update_thread = None
+
+    def __del__(self):
+        self._stop_update_thread()
+
+    @abstractmethod
+    def on_key(self, **kwargs) -> str:
         pass
 
 class DataRecorder(ABC):

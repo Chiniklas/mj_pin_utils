@@ -248,7 +248,7 @@ class Simulator:
 
         N = len(joint_traj)
         if time_traj is None:
-            time_traj = np.linspace(0, N * self.sim_dt, N+1)
+            time_traj = np.linspace(0, N * self.sim_dt, N)
 
         assert joint_traj.shape[0] == len(time_traj), \
             "The number of trajectory points must match the time trajectory length."

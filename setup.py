@@ -20,6 +20,5 @@ setup(
         "mujoco",  # Example dependencies
         "pin",
         "robot_descriptions",
-        "keyboard",
     ],
 )
