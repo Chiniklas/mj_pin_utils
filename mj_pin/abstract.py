@@ -191,7 +191,7 @@ class VisualCallback(ABC):
             mj_data: MuJoCo data instance.
         """
         self.i_geom = 0
-        self._add_visuals(mj_data)
+        self.add_visuals(mj_data)
 
         for i, geom_args in self._geom_args.items():
             mujoco.mjv_initGeom(
@@ -202,7 +202,7 @@ class VisualCallback(ABC):
         viewer.user_scn.ngeom = self.i_geom
 
     @abstractmethod
-    def _add_visuals(self, viewer, sim_step, mj_data):
+    def add_visuals(self, viewer, sim_step, mj_data):
         """
         Abstract method to define rendering logic.
 

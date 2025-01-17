@@ -19,6 +19,7 @@ setup(
     install_requires=[
         "mujoco",  # Example dependencies
         "pin",
-        "robot_descriptions"
+        "robot_descriptions",
+        "keyboard",
     ],
 )
