@@ -31,7 +31,7 @@ class FeetVisualCallback(VisualCallback):
         self.mj_model = mj_model
         self.feet_names = feet_names
 
-    def _add_visuals(self, mj_data):
+    def add_visuals(self, mj_data):
         radius = 0.03
         for i, f_name in enumerate(self.feet_names):
             pos = mj_frame_pos(self.mj_model, mj_data, f_name)
@@ -99,4 +99,5 @@ if __name__ == "__main__":
     sim = Simulator(mj_model)
     sim.run(controller=pd_controller,
             data_recorder=record_state_data,
-            visual_callback=vis_feet_pos)
+            visual_callback=vis_feet_pos,
+            record_video=True)
