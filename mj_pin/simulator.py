@@ -35,8 +35,8 @@ class VideoSettings:
     width: int = 640
     height: int = 480
     fps: int = 24
-    playback_speed: float = 2.0
-    track_obj : str = "base"
+    playback_speed: float = 1.0
+    track_obj : str = ""
     distance : float = 2.0
     azimuth : float = 140.
     elevation : float = -30.0
@@ -56,13 +56,21 @@ class VideoSettings:
     def set_side_view(self):
         self.azimuth = 90
         self.elevation = 0
+    
+    def set_high_quality(self):
+        self.width = 1440
+        self.height = 1024
+
+    def set_low_quality(self):
+        self.width = 640
+        self.height = 480
 
 class Simulator:
     def __init__(
         self,
         mj_model,
         sim_dt : float = 1.0e-3,
-        viewer_dt : float = 1/24.,
+        viewer_dt : float = 1/40.,
         ):
         self.setup()
         self.sim_dt = sim_dt
@@ -103,6 +111,8 @@ class Simulator:
 
     def set_video_settings(self, video_settings : VideoSettings) -> None:
         self.vs = video_settings
+        self.mj_model.visual.offwidth = self.vs.width
+        self.mj_model.visual.offheight = self.vs.height
 
     def _set_state(self, q_mj : np.ndarray, v_mj : np.ndarray):
         self.mj_data.qpos = q_mj.copy()
@@ -123,7 +133,19 @@ class Simulator:
         # Record video
         self.rendering_cam = None
         self.renderer = None
-        self.frames = []       
+        self.frames = []
+
+    def setup_camera_recording(self) -> None:
+        if self.mj_model.vis.global_.offwidth < self.vs.width:
+            self.mj_model.vis.global_.offwidth = self.vs.width
+
+        if self.mj_model.vis.global_.offheight < self.vs.height:
+            self.mj_model.vis.global_.offheight = self.vs.height
+
+        renderer = mujoco.Renderer(self.mj_model, self.vs.height, self.vs.width)
+        self.rendering_cam = mujoco.MjvCamera()
+
+        return renderer 
 
     def _update_camera_position(self, viewer) -> None:
 
@@ -192,7 +214,7 @@ class Simulator:
     def _run_physics(self):
         if self.record_video:
             with self.locker:
-                renderer = mujoco.Renderer(self.mj_model, self.vs.height, self.vs.width)
+                renderer = self.setup_camera_recording()
 
         while not(self.stop_sim):
             self._stop_sim()
@@ -240,12 +262,12 @@ class Simulator:
 
             with self.locker:
                 render_time = self._viewer_step(viewer)
-                # Update visual
-                if self.visual_callback:
-                    self._update_visual(viewer)
-                # Update camera position
-                if self.record_video:
-                    self._update_camera_position(viewer)
+            # Update visual
+            if self.visual_callback:
+                self._update_visual(viewer)
+            # Update camera position
+            if self.record_video:
+                self._update_camera_position(viewer)
 
             sleep_time = self.viewer_dt - render_time
             if sleep_time > 0.:
@@ -383,15 +405,20 @@ class Simulator:
         dt_traj = np.diff(time_traj, append=0.)
 
         if record_video:
-            renderer = mujoco.Renderer(self.mj_model, self.vs.height, self.vs.width)
-            self.rendering_cam = mujoco.MjvCamera()
+            renderer = self.setup_camera_recording()
 
         print(f"Visualizing trajectory...")
+        self.use_viewer = True
         try:
             with mujoco.viewer.launch_passive(self.mj_model, self.mj_data, show_left_ui=False, show_right_ui=False) as viewer:
                 while viewer.is_running():
-
+                    self.mj_data.time = 0.
+                    self.viewer_step = 0
+                    viewer_time = 0.
+                    # Iterate over state trajectory
                     for qpos, dt in zip(joint_traj, dt_traj):
+                        if not viewer.is_running():
+                            break
 
                         # Set the state
                         self.mj_data.qpos[:] = qpos
@@ -399,26 +426,38 @@ class Simulator:
 
                         # Record video
                         if record_video:
+                            self._update_camera_position(viewer)
                             self._record_frame(renderer, viewer)
 
                         # Update the viewer
-                        render_time = self._viewer_step(viewer)
+                        render_time = 0.
+                        if viewer_time <= self.mj_data.time:
+                            render_time = self._viewer_step(viewer)
+
+                        # Update time
+                        self.mj_data.time += dt
+                        viewer_time = self.viewer_step * self.viewer_dt
 
                         # Sleep to match the time trajectory
                         sleep_time = max(dt - render_time, 0.)
                         time.sleep(sleep_time)
 
-                    time.sleep(1)
+                    # Sleep one second before starting again
+                    if viewer.is_running():
+                        time.sleep(1)
 
         except KeyboardInterrupt:
             print("\nTrajectory visualization interrupted.")
 
         finally:
+            if record_video:
+                renderer.close()
+                self.save_video(self.vs.video_dir)
             print("Trajectory visualization complete.")
 
 
 if __name__ == "__main__":
-    from utils import load_mj
+    from mj_pin.utils import load_mj
 
     mj_model, robot_description = load_mj("go2")
     sim = Simulator(mj_model)
