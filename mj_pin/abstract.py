@@ -9,6 +9,24 @@ from functools import wraps
 from datetime import datetime
 from .ext.keyboard import KBHit
 
+class Colors():
+    RED =     [1.0, 0.0, 0.0, 1.]
+    GREEN =   [0.0, 1.0, 0.0, 1.]
+    BLUE =    [0.0, 0.0, 1.0, 1.]
+    YELLOW =  [1.0, 1.0, 0.0, 1.]
+    WHITE =   [0.9, 0.9, 0.9, 1.]
+    BLACK =   [0.1, 0.1, 0.1, 1.]
+
+    def get_map() -> Dict[int, List[float]]:
+        return {
+            0 : Colors.RED,
+            1 : Colors.GREEN,
+            2 : Colors.BLUE,
+            3 : Colors.YELLOW,
+            4 : Colors.WHITE,
+            5 : Colors.BLACK,
+        }
+
 def call_every(func):
     """
     Decorator to call the decorated function only every `self.call_every` steps.
@@ -143,13 +161,6 @@ class DataRecorder(ABC):
 
 class VisualCallback(ABC):
 
-    RED =     [1.0, 0.0, 0.0, 1.]
-    GREEN =   [0.0, 1.0, 0.0, 1.]
-    BLUE =    [0.0, 0.0, 1.0, 1.]
-    YELLOW =  [1.0, 1.0, 0.0, 1.]
-    WHITE =   [0.9, 0.9, 0.9, 1.]
-    BLACK =   [0.1, 0.1, 0.1, 1.]
-    
     def __init__(self, update_step: int = 1):
         """
         Abstract base class for a MuJoCo viewer callback.
@@ -162,14 +173,7 @@ class VisualCallback(ABC):
         self.i_geom: int = 0
         self._geom_args = {}
 
-        self.colors_id = {
-            0 : VisualCallback.RED,
-            1 : VisualCallback.GREEN,
-            2 : VisualCallback.BLUE,
-            3 : VisualCallback.YELLOW,
-            4 : VisualCallback.WHITE,
-            5 : VisualCallback.BLACK,
-        }
+        self.color_map = Colors.get_map()
 
     def _add_geom(self, geom_type, pos, rot, size, rgba):
         """

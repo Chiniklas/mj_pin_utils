@@ -13,6 +13,7 @@ import os
 from datetime import datetime
 
 from mj_pin.abstract import Controller, DataRecorder, VisualCallback
+from mj_pin.model_editor import ModelEditor
 from mj_pin.utils import pin_2_mj_qv, mj_joint_name2act_id
 
 def timing_decorator(func):
@@ -68,25 +69,27 @@ class VideoSettings:
 class Simulator:
     def __init__(
         self,
-        mj_model,
+        xml_path : str,
         sim_dt : float = 1.0e-3,
         viewer_dt : float = 1/40.,
         ):
-        self.setup()
         self.sim_dt = sim_dt
         self.viewer_dt = viewer_dt
         self.vs = VideoSettings()
 
-        self.mj_model = mj_model
-        self.mj_model.opt.timestep = sim_dt
-        self.mj_data = mujoco.MjData(self.mj_model)
-        mujoco.mj_resetDataKeyframe(self.mj_model, self.mj_data, 0)
-
-        self.joint_name2act_id = mj_joint_name2act_id(self.mj_model)
+        # Model editor
+        self.edit = ModelEditor(xml_path)
 
         # Threading for physics and viewer
-        self.locker = threading.RLock()
+        self.__locker = threading.RLock()
 
+    def _init_model_data(self) -> None:
+        self.mj_model = self.edit.get_model()
+        self.mj_data = mujoco.MjData(self.mj_model)
+        self.mj_model.opt.timestep = self.sim_dt
+        mujoco.mj_resetDataKeyframe(self.mj_model, self.mj_data, 0)
+        self.joint_name2act_id = mj_joint_name2act_id(self.mj_model)
+    
     @staticmethod
     def get_date_time_str() -> str:
         now = datetime.now()
@@ -134,6 +137,8 @@ class Simulator:
         self.rendering_cam = None
         self.renderer = None
         self.frames = []
+        # Init model and data
+        self._init_model_data()
 
     def setup_camera_recording(self) -> None:
         if self.mj_model.vis.global_.offwidth < self.vs.width:
@@ -144,6 +149,7 @@ class Simulator:
 
         renderer = mujoco.Renderer(self.mj_model, self.vs.height, self.vs.width)
         self.rendering_cam = mujoco.MjvCamera()
+        if self.vs is None: self.vs = VideoSettings()
 
         return renderer 
 
@@ -213,12 +219,12 @@ class Simulator:
 
     def _run_physics(self):
         if self.record_video:
-            with self.locker:
+            with self.__locker:
                 renderer = self.setup_camera_recording()
 
         while not(self.stop_sim):
             self._stop_sim()
-            self.locker.acquire()
+            self.__locker.acquire()
             physics_time = self._physics_step()
 
             # Record data
@@ -229,7 +235,7 @@ class Simulator:
             if self.record_video:
                 self._record_frame(renderer, None)
 
-            self.locker.release()
+            self.__locker.release()
 
             if self.use_viewer:
                 sleep_time = self.sim_dt - physics_time
@@ -253,14 +259,14 @@ class Simulator:
             self.frames.append(pixels)
 
     def _run_viewer(self):
-        with self.locker:
+        with self.__locker:
             viewer = mujoco.viewer.launch_passive(self.mj_model, self.mj_data, show_left_ui=False, show_right_ui=False)
         
         while viewer.is_running():
             if self.stop_sim:
                 break
 
-            with self.locker:
+            with self.__locker:
                 render_time = self._viewer_step(viewer)
             # Update visual
             if self.visual_callback:
@@ -335,8 +341,6 @@ class Simulator:
             ):
         # Init simulator
         self.setup()
-        if record_video:
-            self.rendering_cam = mujoco.MjvCamera()
         self.sim_time = sim_time
         self.use_viewer = use_viewer
         self.record_video = record_video
@@ -366,7 +370,7 @@ class Simulator:
 
             if physics_thread.is_alive():
                 physics_thread.join()
-            # Ensure threads are stopped gracefully
+            # Ensure threads are stopped
             if viewer_thread and viewer_thread.is_alive():
                 viewer_thread.join()
 
@@ -459,8 +463,8 @@ class Simulator:
 if __name__ == "__main__":
     from mj_pin.utils import load_mj
 
-    mj_model, robot_description = load_mj("go2")
-    sim = Simulator(mj_model)
+    _, robot_description = load_mj("go2")
+    sim = Simulator(robot_description.scene_path)
     sim.vs.track_obj = "base"
     sim.vs.set_side_view()
     sim.run(use_viewer=False, record_video=True)

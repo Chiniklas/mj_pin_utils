@@ -35,7 +35,7 @@ class FeetVisualCallback(VisualCallback):
         radius = 0.03
         for i, f_name in enumerate(self.feet_names):
             pos = mj_frame_pos(self.mj_model, mj_data, f_name)
-            self.add_sphere(pos, radius, self.colors_id[i])
+            self.add_sphere(pos, radius, self.color_map[i])
 
 class StateDataRecorder(DataRecorder):
     def __init__(
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     vis_feet_pos = FeetVisualCallback(mj_model, robot_description.eeff_frame_name)
     record_state_data = StateDataRecorder("./data", record_step=10)
 
-    sim = Simulator(mj_model)
+    sim = Simulator(robot_description.scene_path)
     sim.run(controller=pd_controller,
             data_recorder=record_state_data,
             visual_callback=vis_feet_pos,

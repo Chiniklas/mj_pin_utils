@@ -8,6 +8,7 @@ import importlib
 
 from mj_pin.abstract import Controller
 from mj_pin.robot_description import RobotDescriptionFactory, RobotDescription
+import tempfile
 
 MJ2PIN_QUAT = [1,2,3,0]
 PIN2MJ_QUAT = [3,0,1,2]
