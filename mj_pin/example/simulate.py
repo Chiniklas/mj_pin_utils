@@ -1,14 +1,15 @@
 from typing import List
 import os
-import numpy as np
+import argparse
+import mujoco
 
 from mj_pin.abstract import DataRecorder, VisualCallback
 from mj_pin.simulator import Simulator
-from mj_pin.utils import PinController, load_mj_pin, mj_frame_pos
+from mj_pin.utils import PinController, get_robot_description, mj_frame_pos
 
 class PDController(PinController):
-    def __init__(self, pin_model, Kp = 44., Kd = 3.):
-        super().__init__(pin_model)
+    def __init__(self, urdf_path, Kp = 44., Kd = 3.):
+        super().__init__(urdf_path, floating_base_quat=True)
         self.Kp, self.Kd = Kp, Kd
         self.q0 = None
     
@@ -26,16 +27,17 @@ class PDController(PinController):
         return torque_map
     
 class FeetVisualCallback(VisualCallback):
-    def __init__(self, mj_model, feet_names : List[str], update_step = 1):
+    def __init__(self, xml_path, feet_names : List[str], update_step = 1):
         super().__init__(update_step)
-        self.mj_model = mj_model
+        self.xml_path = xml_path
+        self.mj_model = mujoco.MjModel.from_xml_path(xml_path)
         self.feet_names = feet_names
 
     def add_visuals(self, mj_data):
         radius = 0.03
         for i, f_name in enumerate(self.feet_names):
             pos = mj_frame_pos(self.mj_model, mj_data, f_name)
-            self.add_sphere(pos, radius, self.color_map[i])
+            self.add_sphere(pos, radius, self.colors.id(i))
 
 class StateDataRecorder(DataRecorder):
     def __init__(
@@ -91,13 +93,47 @@ class StateDataRecorder(DataRecorder):
 
 
 if __name__ == "__main__":
-    mj_model, pin_model, robot_description = load_mj_pin("go2")
-    pd_controller = PDController(pin_model)
-    vis_feet_pos = FeetVisualCallback(mj_model, robot_description.eeff_frame_name)
-    record_state_data = StateDataRecorder("./data", record_step=10)
+    parser = argparse.ArgumentParser(description="Simulate a robot with optional recording and visualization.")
+    parser.add_argument("--record_video", action="store_true", help="Record a video of the simulation.")
+    parser.add_argument("--record_data", action="store_true", help="Record simulation data.")
+    parser.add_argument("--robot_name", type=str, default="go2", help="Name of the robot to simulate.")
+    args = parser.parse_args()
 
-    sim = Simulator(robot_description.scene_path)
+    # Load robot information and paths
+    robot_description = get_robot_description(args.robot_name)
+    robot_description.eeff_frame_name = ["FL", "FR", "RL", "RR"]
+
+    # Load the simulator
+    # Will start two threads: one for the viewer and one for the physics simulation.
+    # Viewer and physics are updated at different rate.
+    sim = Simulator(robot_description.xml_scene_path, sim_dt=1e-3, viewer_dt=1/40)
+
+    # PD Controller, called every simulation step
+    pd_controller = PDController(robot_description.urdf_path)
+
+    # Visual callback on the viewer, called every viewer step
+    vis_feet_pos = FeetVisualCallback(robot_description.xml_path, robot_description.eeff_frame_name)
+    
+    # Data recorder, called every 10 simulation step
+    record_state_data = None
+    if args.record_data:
+        record_state_data = StateDataRecorder("./data", record_step=10)
+
+    # Set video setting to high quality
+    if args.record_video:
+        sim.vs.set_high_quality()
+
+    # Add a box in the scene
+    sim.edit.add_box(
+        pos=[0., 0., 0.1],
+        size=[0.1, 0.1, 0.1],
+        euler=[0., 0., 0.3],
+        color="black",
+        name="box_under"
+    )
+    
+    # Run the simulation with the provided controller etc.
     sim.run(controller=pd_controller,
             data_recorder=record_state_data,
             visual_callback=vis_feet_pos,
-            record_video=True)
+            record_video=args.record_video)

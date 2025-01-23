@@ -9,9 +9,9 @@ class ModelEditor():
     def __init__(self, xml_path):
         self.xml_path = xml_path
         self.reset()
-        self.color_map = Colors.get_map()
+        self.colors = Colors()
 
-    def add_body_and_geom(
+    def _add_body_and_geom(
         self,
         geom_type,
         pos : np.ndarray,
@@ -55,10 +55,15 @@ class ModelEditor():
         pos : np.ndarray,
         size : np.ndarray,
         euler : np.ndarray,
-        rgba : List[float],
+        rgba : Optional[List[float]] = None,
+        color : Optional[str] = None,
         name : str = "",
         ) -> int:
-        return self.add_body_and_geom(
+        if rgba is None and color is not None:
+            rgba = self.colors.name(color)
+        elif rgba is None:
+            rgba = self.colors.WHITE
+        return self._add_body_and_geom(
             geom_type=mujoco.mjtGeom.mjGEOM_BOX,
             pos=pos,
             size=size,
@@ -71,18 +76,49 @@ class ModelEditor():
         self,
         pos : np.ndarray,
         radius : float,
-        rgba : List[float],
+        rgba : Optional[List[float]] = None,
+        color : Optional[str] = None,
         name : str = "",
         ) -> int:
+        if rgba is None and color is not None:
+            rgba = self.colors.name(color)
+        elif rgba is None:
+            rgba = self.colors.WHITE
+        
         size = np.array([radius, 0, 0])
         euler = np.zeros(3)
-        return self.add_body_and_geom(
+        return self._add_body_and_geom(
             geom_type=mujoco.mjtGeom.mjGEOM_SPHERE,
             pos=pos,
             size=size,
             euler=euler,
             rgba=rgba,
             name=name if name else "sphere",
+        )
+
+    def add_cylinder(
+        self,
+        pos : np.ndarray,
+        radius : float,
+        height : float,
+        euler : np.ndarray,
+        rgba : Optional[List[float]] = None,
+        color : Optional[str] = None,
+        name : str = "",
+        ) -> int:
+        if rgba is None and color is not None:
+            rgba = self.colors.name(color)
+        elif rgba is None:
+            rgba = self.colors.WHITE
+        
+        size = np.array([radius, height, 0])
+        return self._add_body_and_geom(
+            geom_type=mujoco.mjtGeom.mjGEOM_CYLINDER,
+            pos=pos,
+            size=size,
+            euler=euler,
+            rgba=rgba,
+            name=name if name else "cylinder",
         )
     
     def get_body(
@@ -157,56 +193,65 @@ class ModelEditor():
         return self.mj_spec.compile()
 
 if __name__ == "__main__":
-    from mj_pin.utils import load_mj
+    from mj_pin.utils import get_robot_description
     from mj_pin.simulator import Simulator
     SIM_TIME = 3
 
-    mj_model, robot_description = load_mj("go2")
-    xml_path = robot_description.scene_path
-    sim = Simulator(xml_path)
+    robot_description = get_robot_description("go2")
+    sim = Simulator(robot_description.xml_scene_path)
     
     # Add custom geometries
-    print("Adding custom geometries...")
+    print("--- Adding custom geometries...")
     pos = np.array([1., 1., 1.])
     size = np.array([1., 1., 1.])
     euler = np.array([0., 0., .5])
-    rgba = np.array([1., 1., 1., 0.5])
     box_id = sim.edit.add_box(
         pos,
         size,
         euler,
-        rgba,
+        color="red"
    )
     pos = np.array([-2., 1., 1.])
     radius = 0.5
-    rgba = np.array([0., 0., 0., 0.5])
     sphere_id = sim.edit.add_sphere(
         pos,
         radius,
-        rgba,
-        "sphere"
+        color="blue",
+        name="sphere"
    )
+    pos = np.array([-1., -1., 1.])
+    radius = 0.3
+    height = 1.0
+    euler = np.array([0., 0., 0.])
+    cylinder_id = sim.edit.add_cylinder(
+        pos,
+        radius,
+        height,
+        euler,
+        color="green",
+        name="cylinder"
+    )
     sim.run(sim_time=SIM_TIME)
     
     # Move geometries
-    print("Move box...")
+    print("--- Move box...")
     new_pos = np.array([3., 1., 1.])
     new_euler = np.array([0., 0.5, .0])
     sim.edit.move(new_pos, new_euler, id = box_id)
     sim.run(sim_time=SIM_TIME)
 
     # Change color
-    print("Change color sphere...")
+    print("--- Change color sphere...")
     new_color = np.array([1., 0., 0., 1.])
     sim.edit.set_color(new_color, id = sphere_id)
     sim.run(sim_time=SIM_TIME)
 
     # Remove geometries
-    print("Remove sphere...")
+    print("--- Remove sphere...")
     sim.edit.remove(name="sphere")
     sim.run(sim_time=SIM_TIME)
 
     # Reset
-    print("Reset scene...")
+    print("--- Reset scene...")
     sim.edit.reset()
     sim.run(sim_time=SIM_TIME)

@@ -2,7 +2,7 @@ import time
 import mujoco
 import threading
 import numpy as np
-from typing import Dict, List, Tuple, Callable, Any
+from typing import Dict, List, Optional, Tuple, Callable, Any
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from functools import wraps
@@ -10,22 +10,38 @@ from datetime import datetime
 from .ext.keyboard import KBHit
 
 class Colors():
-    RED =     [1.0, 0.0, 0.0, 1.]
-    GREEN =   [0.0, 1.0, 0.0, 1.]
-    BLUE =    [0.0, 0.0, 1.0, 1.]
-    YELLOW =  [1.0, 1.0, 0.0, 1.]
-    WHITE =   [0.9, 0.9, 0.9, 1.]
-    BLACK =   [0.1, 0.1, 0.1, 1.]
+    RED =     (1.0, 0.0, 0.0, 1.)
+    GREEN =   (0.0, 1.0, 0.0, 1.)
+    BLUE =    (0.0, 0.0, 1.0, 1.)
+    YELLOW =  (1.0, 1.0, 0.0, 1.)
+    WHITE =   (0.9, 0.9, 0.9, 1.)
+    BLACK =   (0.1, 0.1, 0.1, 1.)
 
-    def get_map() -> Dict[int, List[float]]:
-        return {
-            0 : Colors.RED,
-            1 : Colors.GREEN,
-            2 : Colors.BLUE,
-            3 : Colors.YELLOW,
-            4 : Colors.WHITE,
-            5 : Colors.BLACK,
+    COLOR_ID_MAP = {
+            0 : RED,
+            1 : GREEN,
+            2 : BLUE,
+            3 : YELLOW,
+            4 : WHITE,
+            5 : BLACK,
         }
+
+    COLOR_NAME_MAP = {
+        "red" : RED,
+        "green" : GREEN,
+        "blue" : BLUE,
+        "yellow" : YELLOW,
+        "white" : WHITE,
+        "black" : BLACK,
+    }
+
+    @staticmethod
+    def id(id : int) -> List[str]:
+        return dict.get(Colors.COLOR_ID_MAP, id, Colors.WHITE)
+    
+    @staticmethod
+    def name(name : str) -> List[str]:
+        return dict.get(Colors.COLOR_NAME_MAP, name, Colors.WHITE)
 
 def call_every(func):
     """
@@ -172,8 +188,7 @@ class VisualCallback(ABC):
         self._call_every = update_step
         self.i_geom: int = 0
         self._geom_args = {}
-
-        self.color_map = Colors.get_map()
+        self.colors = Colors()
 
     def _add_geom(self, geom_type, pos, rot, size, rgba):
         """
@@ -270,20 +285,13 @@ class VisualCallback(ABC):
 class RobotDescription(ABC):
     # Robot name
     name : str
-    # End-effectors frame id
-    eeff_frame_name : List[str] = None
-
-    def __post_init__(self):
-        # MuJoCo model path
-        self.mjcf_path : str = ""
-        # Pinocchio model path (if loaded)
-        self.urdf_path : str = ""
-        # Scene path
-        self.scene_path : str = ""
-        # Nominal configuration
-        self.q0 : np.ndarray = None 
-
-@dataclass
-class QuadrupedDescription(RobotDescription):
-    # Foot size
-    foot_size : float = 0.
+    # MuJoCo model path (id loaded)
+    xml_path : str = ""
+    # Pinocchio model path (if loaded)
+    urdf_path : str = ""
+    # Scene path 
+    xml_scene_path : str = ""
+    # End-effectors frame name
+    eeff_frame_name : Optional[List[str]] = None
+    # Nominal configuration
+    q0 : Optional[np.ndarray] = None

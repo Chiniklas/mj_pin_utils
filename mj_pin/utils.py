@@ -6,9 +6,7 @@ import pinocchio as pin
 import os
 import importlib
 
-from mj_pin.abstract import Controller
-from mj_pin.robot_description import RobotDescriptionFactory, RobotDescription
-import tempfile
+from mj_pin.abstract import Controller, RobotDescription
 
 MJ2PIN_QUAT = [1,2,3,0]
 PIN2MJ_QUAT = [3,0,1,2]
@@ -22,7 +20,8 @@ def _path_scene_with_floor(path_mjcf : str) -> str:
     scene_path = os.path.join(file_dir, scene_file_name)
 
     if not os.path.exists(scene_path):
-        raise FileNotFoundError(f"{scene_path} not found.")
+        print(f"MuJoCo scene path {scene_path} not found.")
+        return ""
     
     # Process scene file
     with open(scene_path, "r") as f:
@@ -35,10 +34,7 @@ def _path_scene_with_floor(path_mjcf : str) -> str:
     
     return scene_path
 
-def load_mj(
-        robot_name : str,
-        with_floor : bool = True,
-        desc : RobotDescription = None):
+def get_mj_desc(robot_name : str, desc : RobotDescription = None) -> RobotDescription:
     # Get robot model file path
     robot_mj_description_module = importlib.import_module(f"robot_descriptions.{robot_name}_mj_description")
     path_mjcf = robot_mj_description_module.MJCF_PATH
@@ -46,90 +42,53 @@ def load_mj(
     assert os.path.exists(path_mjcf), f"MJCF file not found. Invalid robot name {robot_name}"
 
     # Load description if exists
-    desc = RobotDescriptionFactory.get(robot_name) if desc is None else desc
-    if not desc.name: desc.name = robot_name
+    desc = RobotDescription(robot_name) if desc is None else desc
+    if desc.name != robot_name:
+        raise ValueError(f"Wrong robot name {robot_name}.")
+    
+    # Get model path
+    desc.xml_path = path_mjcf
+    # Get scene path if exists
+    desc.xml_scene_path = _path_scene_with_floor(path_mjcf)
 
-    # Load model
-    scene_mjcf = ""
-    if with_floor:
-        scene_mjcf = _path_scene_with_floor(path_mjcf)
-        mj_model = mujoco.MjModel.from_xml_path(scene_mjcf)
-        desc.scene_path = scene_mjcf
-    else:
-        mj_model = mujoco.MjModel.from_xml_path(path_mjcf)
-
-    # Save keyframe is exists
+    # Save keyframe if exists
+    mj_model = mujoco.MjModel.from_xml_path(path_mjcf)
     if mj_model.nkey > 0:
         desc.q0 = mj_model.key_qpos[0].copy()
 
-    desc.mjcf_path = path_mjcf
+    return desc
 
-    return mj_model, desc
-
-def load_pin(
-    robot_name : str,
-    from_mjcf : bool = False,
-    floating_base_quat : bool = True,
-    floating_base_euler : bool = False,
-    desc : RobotDescription = None
-    ):
-
-    desc = RobotDescriptionFactory.get(robot_name) if desc is None else desc
-
-    # Load model from MJCF (without scene)
-    if from_mjcf:
-        robot_description_module = importlib.import_module(f"robot_descriptions.{robot_name}_mj_description")
-        path_mjcf = robot_description_module.MJCF_PATH
-
-        if floating_base_euler:
-            print("Cannot load pin model from MJCF with euler base link representation")
-        pin_model = pin.buildModelFromMJCF(path_mjcf)
-
-    # Load model from URDF
-    else:
-        # Get robot model file path
-        robot_description_module = importlib.import_module(f"robot_descriptions.{robot_name}_description")
-        urdf_path = robot_description_module.URDF_PATH
-        desc.urdf_path = urdf_path
-
-        if floating_base_quat:
-            root = pin.JointModelFreeFlyer()
-            pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
-        elif floating_base_euler:
-            root = pin.JointModelComposite(2)
-            root.addJoint(pin.JointModelTranslation())
-            root.addJoint(pin.JointModelSphericalZYX())
-            pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
-        else:
-            pin_model = pin.buildModelFromUrdf(urdf_path)
-
-    pin_model.name = robot_name
-    
-    return pin_model, desc
-
-def load_mj_pin(
-        robot_name : str,
-        with_floor : bool = True,
-        from_mjcf : bool = True,
-        floating_base_quat : bool = True,
-        floating_base_euler : bool = False,
-        copy_motor_param : bool = True,
-        ):
+def get_pin_desc(robot_name : str, desc : RobotDescription = None) -> RobotDescription:
     # Get robot model file path
-    mj_model, desc = load_mj(robot_name, with_floor)
+    robot_description_module = importlib.import_module(f"robot_descriptions.{robot_name}_description")
+    urdf_path = robot_description_module.URDF_PATH
 
-    pin_model, desc = load_pin(robot_name, from_mjcf, floating_base_quat, floating_base_euler, desc)
+    assert os.path.exists(urdf_path), f"URDF file not found. Invalid robot name {robot_name}"
 
-    # Add keyframe
-    if mj_model.nkey > 0:
-        mj_kf = mj_model.key_qpos[0]
-        pin_model.referenceConfigurations["home"] = mj_kf
+    # Load description if exists
+    desc = RobotDescription(robot_name) if desc is None else desc
+    if desc.name != robot_name:
+        raise ValueError(f"Wrong robot name {robot_name}.")
+    
+    desc.urdf_path = urdf_path
+    return desc
 
-    # Update motor paramters (damping, friction, armature)
-    if copy_motor_param:
-        copy_motor_parameters(pin_model, mj_model)
+def get_robot_description(robot_name : str) -> RobotDescription:
+    """
+    Retrieve the robot description for a given robot name.
+    Base on robot description package.
 
-    return mj_model, pin_model, desc
+    Args:
+        robot_name (str): The name of the robot for which the description is to be retrieved.
+
+    Returns:
+        RobotDescription: The complete description of the robot.
+    """
+    # Get robot model file path
+    robot_desc = get_mj_desc(robot_name)
+    robot_desc = get_pin_desc(robot_name, robot_desc)
+
+    return robot_desc
 
 def mj_joint_name2id(mj_model) -> Dict[str, int]:
     """
@@ -341,14 +300,28 @@ def pin_2_mj_qv(q_pin : np.ndarray, v_pin : np.ndarray) -> np.ndarray:
 
 class PinController(Controller):
 
-    def __init__(self, pin_model):
+    def __init__(self, urdf_path : str,
+                 floating_base_quat : bool = False,
+                 floating_base_euler : bool = False):
         super().__init__()
-        self.pin_model = pin_model
-        self.pin_data = pin.Data(pin_model)
+        self.urdf_path = urdf_path
 
-        self.nq = pin_model.nq
-        self.nv = pin_model.nv
-        self.nu = len([j for j in pin_model.joints 
+        if floating_base_quat:
+            root = pin.JointModelFreeFlyer()
+            self.pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
+        elif floating_base_euler:
+            root = pin.JointModelComposite(2)
+            root.addJoint(pin.JointModelTranslation())
+            root.addJoint(pin.JointModelSphericalZYX())
+            self.pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
+        else:
+            self.pin_model = pin.buildModelFromUrdf(urdf_path)
+
+        self.pin_data = pin.Data(self.pin_model)
+
+        self.nq = self.pin_model.nq
+        self.nv = self.pin_model.nv
+        self.nu = len([j for j in self.pin_model.joints 
                        if j.id < self.nv and j.nv == 1])
 
         self.joint_name2act_id = pin_joint_name2act_id(self.pin_model)

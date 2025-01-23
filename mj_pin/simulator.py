@@ -461,10 +461,10 @@ class Simulator:
 
 
 if __name__ == "__main__":
-    from mj_pin.utils import load_mj
+    from mj_pin.utils import get_robot_description
 
-    _, robot_description = load_mj("go2")
-    sim = Simulator(robot_description.scene_path)
+    robot_description = get_robot_description("go2")
+    sim = Simulator(robot_description.xml_scene_path)
     sim.vs.track_obj = "base"
     sim.vs.set_side_view()
     sim.run(use_viewer=False, record_video=True)
