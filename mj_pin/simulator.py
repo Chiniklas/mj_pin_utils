@@ -75,7 +75,11 @@ class Simulator:
         ):
         self.sim_dt = sim_dt
         self.viewer_dt = viewer_dt
+        # Video settings
         self.vs = VideoSettings()
+        # Initial state
+        self.q0 = None
+        self.v0 = None
 
         # Model editor
         self.edit = ModelEditor(xml_path)
@@ -87,7 +91,11 @@ class Simulator:
         self.mj_model = self.edit.get_model()
         self.mj_data = mujoco.MjData(self.mj_model)
         self.mj_model.opt.timestep = self.sim_dt
-        mujoco.mj_resetDataKeyframe(self.mj_model, self.mj_data, 0)
+
+        if self.q0 is None or self.v0 is None:
+            mujoco.mj_resetDataKeyframe(self.mj_model, self.mj_data, 0)
+        else:
+            self._set_to_inital_state()
         self.joint_name2act_id = mj_joint_name2act_id(self.mj_model)
     
     @staticmethod
@@ -95,22 +103,32 @@ class Simulator:
         now = datetime.now()
         date_time = now.strftime("%m_%d_%Y_%H_%M_%S")
         return date_time
-
-    def reset(
-        self,
-        q : np.ndarray = None,
-        v : np.ndarray = None,
-        pin_format : bool = False) -> None:
+    
+    def set_initial_state(self,
+                          q0 : np.ndarray = None,
+                          v0 : np.ndarray = None,
+                          pin_format : bool = False,
+                          key_frame_id : int = 0) -> None:
         
+        self.mj_model = self.edit.get_model()
+        self.mj_data = mujoco.MjData(self.mj_model)
+
         # Reset to keyframe
-        if q is None and v is None:
-            mujoco.mj_resetDataKeyframe(self.mj_model, self.mj_data, 0)
-
-        v = np.zeros(self.mj_model.nv) if v is None else v
-
-        if pin_format: 
-            q, v = pin_2_mj_qv(q, v)
-        self._set_state(q, v)
+        if q0 is None and v0 is None:
+            mujoco.mj_resetDataKeyframe(self.mj_model, self.mj_data, key_frame_id)
+            self.q0, self.v0 = self.mj_data.qpos.copy(), self.qvel.copy()
+        elif v0 is None:
+            self.v0 = np.zeros(self.mj_model.nv)
+        elif q0 is None:
+            self.q0 = np.zeros(self.mj_model.nq)
+        else:
+            if pin_format: 
+                q0, v0 = pin_2_mj_qv(q0, v0)
+            self.q0 = q0.copy()
+            self.v0 = v0.copy()
+    
+    def _set_to_inital_state(self) -> None:
+        self._set_state(self.q0, self.v0)
 
     def set_video_settings(self, video_settings : VideoSettings) -> None:
         self.vs = video_settings
