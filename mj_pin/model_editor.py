@@ -111,7 +111,7 @@ class ModelEditor():
         elif rgba is None:
             rgba = self.colors.WHITE
         
-        size = np.array([radius, height, 0])
+        size = np.array([radius / 2., height / 2., 0])
         return self._add_body_and_geom(
             geom_type=mujoco.mjtGeom.mjGEOM_CYLINDER,
             pos=pos,
