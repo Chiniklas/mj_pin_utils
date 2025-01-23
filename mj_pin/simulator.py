@@ -93,9 +93,9 @@ class Simulator:
         self.mj_model.opt.timestep = self.sim_dt
 
         if self.q0 is None or self.v0 is None:
-            mujoco.mj_resetDataKeyframe(self.mj_model, self.mj_data, 0)
-        else:
-            self._set_to_inital_state()
+            self.set_initial_state()
+
+        self._reset_state()
         self.joint_name2act_id = mj_joint_name2act_id(self.mj_model)
     
     @staticmethod
@@ -116,7 +116,7 @@ class Simulator:
         # Reset to keyframe
         if q0 is None and v0 is None:
             mujoco.mj_resetDataKeyframe(self.mj_model, self.mj_data, key_frame_id)
-            self.q0, self.v0 = self.mj_data.qpos.copy(), self.qvel.copy()
+            self.q0, self.v0 = self.mj_data.qpos.copy(), self.mj_data.qvel.copy()
         elif v0 is None:
             self.v0 = np.zeros(self.mj_model.nv)
         elif q0 is None:
@@ -127,7 +127,7 @@ class Simulator:
             self.q0 = q0.copy()
             self.v0 = v0.copy()
     
-    def _set_to_inital_state(self) -> None:
+    def _reset_state(self) -> None:
         self._set_state(self.q0, self.v0)
 
     def set_video_settings(self, video_settings : VideoSettings) -> None:
