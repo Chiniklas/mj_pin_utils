@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import mujoco.specs_test
 import numpy as np
 import mujoco
@@ -300,22 +300,31 @@ def pin_2_mj_qv(q_pin : np.ndarray, v_pin : np.ndarray) -> np.ndarray:
 
 class PinController(Controller):
 
-    def __init__(self, urdf_path : str,
+    def __init__(self,
+                 urdf_path : Optional[str] = "",
+                 pin_model: Optional[pin.Model] = None,
                  floating_base_quat : bool = False,
                  floating_base_euler : bool = False):
         super().__init__()
-        self.urdf_path = urdf_path
 
-        if floating_base_quat:
-            root = pin.JointModelFreeFlyer()
-            self.pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
-        elif floating_base_euler:
-            root = pin.JointModelComposite(2)
-            root.addJoint(pin.JointModelTranslation())
-            root.addJoint(pin.JointModelSphericalZYX())
-            self.pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
+        if not urdf_path and pin_model is None:
+            raise ValueError("PinController: Provide at least a pinocchio model or URDF path.")
+        
+        if pin_model is not None:
+            self.pin_model = pin_model
         else:
-            self.pin_model = pin.buildModelFromUrdf(urdf_path)
+            self.urdf_path = urdf_path
+
+            if floating_base_quat:
+                root = pin.JointModelFreeFlyer()
+                self.pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
+            elif floating_base_euler:
+                root = pin.JointModelComposite(2)
+                root.addJoint(pin.JointModelTranslation())
+                root.addJoint(pin.JointModelSphericalZYX())
+                self.pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
+            else:
+                self.pin_model = pin.buildModelFromUrdf(urdf_path)
 
         self.pin_data = pin.Data(self.pin_model)
 
