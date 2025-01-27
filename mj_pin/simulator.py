@@ -109,9 +109,8 @@ class Simulator:
                           v0 : np.ndarray = None,
                           pin_format : bool = False,
                           key_frame_id : int = 0) -> None:
-        
-        self.mj_model = self.edit.get_model()
-        self.mj_data = mujoco.MjData(self.mj_model)
+        if self.mj_data is None or self.mj_model is None:
+            self._init_model_data()
 
         # Reset to keyframe
         if q0 is None and v0 is None:
@@ -307,6 +306,14 @@ class Simulator:
         if self.controller and self.controller.diverged:
             self.stop_sim = True
 
+
+    def _start_viewer(self,):
+        viewer_thread = Thread(target=self._run_viewer)
+        viewer_thread.start()
+
+        return viewer_thread
+    
+            
     def _start_viewer(self,):
         viewer_thread = Thread(target=self._run_viewer)
         viewer_thread.start()
