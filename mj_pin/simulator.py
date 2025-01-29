@@ -80,6 +80,8 @@ class Simulator:
         # Initial state
         self.q0 = None
         self.v0 = None
+        self.mj_data = None
+        self.mj_model = None
 
         # Model editor
         self.edit = ModelEditor(xml_path)
