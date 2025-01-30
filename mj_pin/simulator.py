@@ -1,5 +1,5 @@
 import time
-from typing import Optional
+from typing import List, Optional, Union
 import mujoco.memory_leak_test
 import numpy as np
 import mujoco
@@ -75,6 +75,7 @@ class Simulator:
         ):
         self.sim_dt = sim_dt
         self.viewer_dt = viewer_dt
+        self.collision_check_step = 30
         # Video settings
         self.vs = VideoSettings()
         # Initial state
@@ -149,6 +150,7 @@ class Simulator:
         self.time : float = 0.
         self.stop_sim = False
         self.use_viewer = False
+        self.collided = False
 
         # Record video
         self.rendering_cam = None
@@ -156,6 +158,16 @@ class Simulator:
         self.frames = []
         # Init model and data
         self._init_model_data()
+        # Collision
+        self.allowed_collision = []
+        
+    def _check_collision(self) -> None:
+        if self.sim_step % self.collision_check_step == 0 and self.allowed_collision:
+                
+            for contact in self.mj_data.contact:
+                if (not np.all(np.isin(contact.geom, self.allowed_collision))):
+                    self.collided = True
+                    break
 
     def setup_camera_recording(self) -> None:
         if self.mj_model.vis.global_.offwidth < self.vs.width:
@@ -247,6 +259,9 @@ class Simulator:
             self._stop_sim(controller)
             
             physics_time = self._physics_step(controller)
+            
+            # Check for collision
+            self._check_collision()
 
             # Record data
             if data_recorder:
@@ -306,6 +321,9 @@ class Simulator:
     def _stop_sim(self, controller : Controller) -> None:
         if self.sim_time > 0 and self.sim_step * self.sim_dt >= self.sim_time:
             self.stop_sim = True
+            
+        if self.collided:
+            self.stop_sim = True
         
         if controller and controller.diverged:
             self.stop_sim = True
@@ -353,17 +371,27 @@ class Simulator:
             data_recorder : DataRecorder = None,
             visual_callback : VisualCallback = None,
             record_video : bool = False,
+            allowed_collision : Union[List[str], List[int]] = []
             ):
+        
         # Init simulator
         self.setup()
         self.sim_time = sim_time
         self.use_viewer = use_viewer
         self.record_video = record_video
+        # Collision. If empty, all collisions allowed.
+        # Should be geometry name or geometry id
+        if allowed_collision:
+            self.allowed_collision = [
+                mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_GEOM, obj) if isinstance(obj, str)
+                else int(obj)
+                for obj in allowed_collision + self.edit.name_allowed_collisions
+            ]
 
         # Start viewer thread          
         viewer_thread = None
         if use_viewer:
-            viewer_thread = Thread(target=self._run_viewer, args=(visual_callback, ))
+            viewer_thread = Thread(target=self._run_viewer, args=(visual_callback,))
             viewer_thread.start()
 
         # Start physics thread

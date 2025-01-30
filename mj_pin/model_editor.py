@@ -19,6 +19,7 @@ class ModelEditor():
         euler : np.ndarray,
         rgba : List[float],
         name : str = "",
+        allow_collision : bool = True,
         ) -> int:
         
         if name:
@@ -41,6 +42,8 @@ class ModelEditor():
         self.id2name[self.id] = name
         self.name2id[name] = self.id
         self.id += 1
+        if allow_collision:
+            self.name_allowed_collisions.append(geom.name)
         # Return index
         return self.id - 1
 
@@ -58,6 +61,7 @@ class ModelEditor():
         rgba : Optional[List[float]] = None,
         color : Optional[str] = None,
         name : str = "",
+        allow_collision : bool = True,
         ) -> int:
         if rgba is None and color is not None:
             rgba = self.colors.name(color)
@@ -79,6 +83,7 @@ class ModelEditor():
         rgba : Optional[List[float]] = None,
         color : Optional[str] = None,
         name : str = "",
+        allow_collision : bool = True,
         ) -> int:
         if rgba is None and color is not None:
             rgba = self.colors.name(color)
@@ -105,6 +110,7 @@ class ModelEditor():
         rgba : Optional[List[float]] = None,
         color : Optional[str] = None,
         name : str = "",
+        allow_collision : bool = True,
         ) -> int:
         if rgba is None and color is not None:
             rgba = self.colors.name(color)
@@ -188,6 +194,7 @@ class ModelEditor():
         self.id : int = len(self.mj_spec.bodies)
         self.id2name : Dict[int, str] = {}
         self.name2id : Dict[str, int] = {}
+        self.name_allowed_collisions : List[str] = []
 
     def get_model(self):
         return self.mj_spec.compile()
