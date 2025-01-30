@@ -149,9 +149,7 @@ class Simulator:
         self.time : float = 0.
         self.stop_sim = False
         self.use_viewer = False
-        self.controller = None
-        self.data_recorder = None
-        self.visual_callback = None
+
         # Record video
         self.rendering_cam = None
         self.renderer = None
@@ -204,9 +202,9 @@ class Simulator:
 
             self.rendering_cam.lookat = obj_pose
 
-    def _control_step(self) -> None:
+    def _control_step(self, controller : Controller) -> None:
         # joint name : torque value
-        torque_map = self.controller.get_torques(self.sim_step, self.mj_data)
+        torque_map = controller.get_torques(self.sim_step, self.mj_data)
 
         torque_ctrl = np.zeros(self.mj_model.nu)
         for joint_name, torque_value in torque_map.items():
@@ -216,46 +214,48 @@ class Simulator:
 
         self.mj_data.ctrl = torque_ctrl
 
-    def _record_data_step(self) -> None:
-        self.data_recorder.record(self.sim_step, self.mj_data)
+    def _record_data_step(self, data_recorder : DataRecorder) -> None:
+        data_recorder.record(self.sim_step, self.mj_data)
 
     @timing_decorator
-    def _physics_step(self) -> None:
-        # Compute state, vel
-        mujoco.mj_step1(self.mj_model, self.mj_data)
-
-        # Compute torques and set torques
-        if self.controller is not None:
-            self._control_step()
-
-        # TODO: Apply external forces
-
-        # Apply control
-        mujoco.mj_step2(self.mj_model, self.mj_data)
+    def _physics_step(self, controller : Controller) -> None:
         
+        with self.__locker:
+            # Compute state, vel
+            mujoco.mj_step1(self.mj_model, self.mj_data)
+
+            # Compute torques and set torques
+            if controller is not None:
+                self._control_step(controller)
+
+            # TODO: Apply external forces
+
+            # Apply control
+            mujoco.mj_step2(self.mj_model, self.mj_data)
+            
         self.sim_step += 1
         self.time += self.sim_dt
 
-    def _run_physics(self):
+    def _run_physics(self, controller : Controller, data_recorder : DataRecorder):
         if self.record_video:
             with self.__locker:
                 renderer = self.setup_camera_recording()
+                
+        if data_recorder: data_recorder.reset()
 
         while not(self.stop_sim):
-            self._stop_sim()
-            self.__locker.acquire()
-            physics_time = self._physics_step()
+            self._stop_sim(controller)
+            
+            physics_time = self._physics_step(controller)
 
             # Record data
-            if self.data_recorder is not None:
-                self._record_data_step()
+            if data_recorder:
+                self._record_data_step(data_recorder)
 
             # Record video
             if self.record_video:
                 self._record_frame(renderer, None)
-
-            self.__locker.release()
-
+            
             if self.use_viewer:
                 sleep_time = self.sim_dt - physics_time
                 if sleep_time > 0.:
@@ -267,7 +267,8 @@ class Simulator:
 
     @timing_decorator
     def _viewer_step(self, viewer) -> float:
-        viewer.sync()
+        with self.__locker:
+            viewer.sync()
         self.viewer_step += 1
 
     def _record_frame(self, renderer, viewer) -> float:
@@ -277,7 +278,7 @@ class Simulator:
             pixels = renderer.render()
             self.frames.append(pixels)
 
-    def _run_viewer(self):
+    def _run_viewer(self, visual_callback : VisualCallback):
         with self.__locker:
             viewer = mujoco.viewer.launch_passive(self.mj_model, self.mj_data, show_left_ui=False, show_right_ui=False)
         
@@ -285,45 +286,32 @@ class Simulator:
             if self.stop_sim:
                 break
 
-            with self.__locker:
-                render_time = self._viewer_step(viewer)
+            render_time = self._viewer_step(viewer)
+            
             # Update visual
-            if self.visual_callback:
-                self._update_visual(viewer)
+            if visual_callback is not None:
+                self._update_visual(viewer, visual_callback)
             # Update camera position
             if self.record_video:
                 self._update_camera_position(viewer)
 
             sleep_time = self.viewer_dt - render_time
+
             if sleep_time > 0.:
                 time.sleep(sleep_time)
 
         self.stop_sim = True
         viewer.close()
 
-    def _stop_sim(self) -> None:
+    def _stop_sim(self, controller : Controller) -> None:
         if self.sim_time > 0 and self.sim_step * self.sim_dt >= self.sim_time:
             self.stop_sim = True
         
-        if self.controller and self.controller.diverged:
+        if controller and controller.diverged:
             self.stop_sim = True
-
-
-    def _start_viewer(self,):
-        viewer_thread = Thread(target=self._run_viewer)
-        viewer_thread.start()
-
-        return viewer_thread
     
-            
-    def _start_viewer(self,):
-        viewer_thread = Thread(target=self._run_viewer)
-        viewer_thread.start()
-
-        return viewer_thread
-    
-    def _update_visual(self, viewer):
-        self.visual_callback.render(
+    def _update_visual(self, viewer, visual_callback : VisualCallback):
+        visual_callback.render(
             self.sim_step,
             viewer,
             self.mj_data
@@ -371,19 +359,15 @@ class Simulator:
         self.sim_time = sim_time
         self.use_viewer = use_viewer
         self.record_video = record_video
-        self.controller = controller
-        self.data_recorder = data_recorder
-        self.visual_callback = visual_callback
-        if self.data_recorder: data_recorder.reset()
 
         # Start viewer thread          
         viewer_thread = None
         if use_viewer:
-            viewer_thread = Thread(target=self._run_viewer)
+            viewer_thread = Thread(target=self._run_viewer, args=(visual_callback, ))
             viewer_thread.start()
 
         # Start physics thread
-        physics_thread = Thread(target=self._run_physics)
+        physics_thread = Thread(target=self._run_physics, args=(controller, data_recorder))
         physics_thread.start()
 
         try:
@@ -403,8 +387,8 @@ class Simulator:
 
         print("Simulation stopped.")
 
-        if self.data_recorder:
-            self.data_recorder.save()
+        if data_recorder:
+            data_recorder.save()
 
         if self.record_video:
             self.save_video(self.vs.video_dir)
