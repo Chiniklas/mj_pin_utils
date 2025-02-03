@@ -1,5 +1,6 @@
 from typing import List
 import os
+import numpy as np
 import argparse
 import mujoco
 
@@ -64,12 +65,14 @@ class StateDataRecorder(DataRecorder):
         """
         if not self.record_dir:
             self.record_dir = os.getcwd()
+        # Uncomment to save data
         # os.makedirs(self.record_dir, exist_ok=True)
 
         timestamp = self.get_date_time_str()
         file_path = os.path.join(self.record_dir, f"simulation_data_{timestamp}.npz")
 
         try:
+            print(self.data["time"][:10])
             # Uncomment to save data
             # np.savez(file_path, **self.data)
             print(f"Data successfully saved to {file_path}")
@@ -86,10 +89,10 @@ class StateDataRecorder(DataRecorder):
             **kwargs: Additional data to record.
         """
         # Record time and state
-        self.data["time"].append(mj_data.time)
-        self.data["q"].append(mj_data.qpos)
-        self.data["v"].append(mj_data.qvel)
-        self.data["ctrl"].append(mj_data.ctrl)
+        self.data["time"].append(round(mj_data.time, 4))
+        self.data["q"].append(mj_data.qpos.copy())
+        self.data["v"].append(mj_data.qvel.copy())
+        self.data["ctrl"].append(mj_data.ctrl.copy())
 
 
 if __name__ == "__main__":
