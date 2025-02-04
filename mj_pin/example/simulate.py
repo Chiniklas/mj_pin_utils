@@ -79,7 +79,7 @@ class StateDataRecorder(DataRecorder):
         except Exception as e:
             print(f"Error saving data: {e}")
 
-    def _record(self, mj_data) -> None:
+    def record(self, mj_data) -> None:
         """
         Record simulation data at the current simulation step.
 

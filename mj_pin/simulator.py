@@ -1,5 +1,5 @@
 import time
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 import mujoco.memory_leak_test
 import numpy as np
 import mujoco
@@ -11,6 +11,7 @@ from dataclasses import dataclass
 import cv2
 import os
 from datetime import datetime
+import multiprocessing as mp
 
 from mj_pin.abstract import Controller, DataRecorder, VisualCallback
 from mj_pin.model_editor import ModelEditor
@@ -227,26 +228,7 @@ class Simulator:
         self.mj_data.ctrl = torque_ctrl
 
     def _record_data_step(self, data_recorder : DataRecorder) -> None:
-        data_recorder.record(self.sim_step, self.mj_data)
-
-    @timing_decorator
-    def _physics_step(self, controller : Controller) -> None:
-        
-        with self.__locker:
-            # Compute state, vel
-            mujoco.mj_step1(self.mj_model, self.mj_data)
-
-            # Compute torques and set torques
-            if controller is not None:
-                self._control_step(controller)
-
-            # TODO: Apply external forces
-
-            # Apply control
-            mujoco.mj_step2(self.mj_model, self.mj_data)
-            
-        self.sim_step += 1
-        self.time += self.sim_dt
+        data_recorder._record(self.sim_step, self.mj_data)
 
     def _run_physics(self, controller : Controller, data_recorder : DataRecorder):
         if self.record_video:
@@ -258,23 +240,40 @@ class Simulator:
         while not(self.stop_sim):
             self._stop_sim(controller)
             
-            physics_time = self._physics_step(controller)
-            
-            # Check for collision
-            self._check_collision()
+            start_time = time.time()
+            with self.__locker:
+                # Compute state, vel
+                mujoco.mj_step1(self.mj_model, self.mj_data)
+                
+                # Check for collision
+                self._check_collision()
+                
+                # Record data
+                if data_recorder:
+                    self._record_data_step(data_recorder)
 
-            # Record data
-            if data_recorder:
-                self._record_data_step(data_recorder)
+                # Compute torques and set torques
+                if controller is not None:
+                    self._control_step(controller)
+
+                # TODO: Apply external forces
+
+                # Apply control
+                mujoco.mj_step2(self.mj_model, self.mj_data)            
 
             # Record video
             if self.record_video:
                 self._record_frame(renderer, None)
             
+            # No sleep time if viewer is no viewer
             if self.use_viewer:
+                physics_time = time.time() - start_time
                 sleep_time = self.sim_dt - physics_time
                 if sleep_time > 0.:
                     time.sleep(sleep_time)
+                    
+            self.sim_step += 1
+            self.time += self.sim_dt
 
         mujoco.mj_forward(self.mj_model, self.mj_data)
         if self.record_video:

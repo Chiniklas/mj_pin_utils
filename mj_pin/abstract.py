@@ -151,16 +151,16 @@ class DataRecorder(ABC):
         return date_time
 
     @call_every
-    def record(
+    def _record(
         self,
         sim_step : int,
         mj_data,
         **kwargs,
     ) -> None:
-        self._record(mj_data, **kwargs)
+        self.record(mj_data, **kwargs)
         
     @abstractmethod
-    def _record(
+    def record(
         self,
         mj_data,
         **kwargs,
