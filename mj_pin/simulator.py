@@ -11,7 +11,6 @@ from dataclasses import dataclass
 import cv2
 import os
 from datetime import datetime
-import multiprocessing as mp
 
 from mj_pin.abstract import Controller, DataRecorder, VisualCallback
 from mj_pin.model_editor import ModelEditor
@@ -496,7 +495,6 @@ class Simulator:
                 renderer.close()
                 self.save_video(self.vs.video_dir)
             print("Trajectory visualization complete.")
-
 
 if __name__ == "__main__":
     from mj_pin.utils import get_robot_description

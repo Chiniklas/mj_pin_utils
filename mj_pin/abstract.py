@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from functools import wraps
 from datetime import datetime
+import multiprocessing as mp
 from .ext.keyboard import KBHit
 
 class Colors():
@@ -280,7 +281,110 @@ class VisualCallback(ABC):
             mj_data: MuJoCo data instance.
         """
         pass
+
+class ParallelSimulatorBase(ABC):
+    
+    def __init__(self, n_cores: int = 1):
+        self.n_cores = n_cores
+        self.job_queue = mp.Queue(maxsize=n_cores+1)
+        self.stop_processes = mp.Value('b', False)
+        self.job_id = 0
+        self.processes = []
         
+        self.queue_timeout = 5.
+        self.waiting_sleep_time = .1
+        
+    @abstractmethod
+    def create_job(self) -> dict:
+        """
+        Producer.
+        Creates arguments for the run_job method.
+        """
+        pass
+    
+    @abstractmethod
+    def run_job(self, **kwargs):
+        """
+        Consumer.
+        Processes the job with the arguments provided.
+        """
+        pass
+    
+    def _add_job(self) -> None:
+        """
+        Add a job to the workers queue.
+        """
+        while self.job_queue.full():
+            time.sleep(self.waiting_sleep_time)
+            
+        try:
+            kwargs = self.create_job()  # Get job arguments
+        except Exception as e:
+            print(e)
+            return
+            
+        self.job_queue.put((self.job_id, kwargs))
+        print("Added job", self.job_id)
+        self.job_id += 1
+    
+    def _run_job(self, worker_id: int) -> None:
+        """
+        Worker method that runs jobs from the queue.
+        """       
+        while not self.stop_processes.value:
+            try:
+                job_id, kwargs = self.job_queue.get(block=True, timeout=self.waiting_sleep_time)
+                
+                print(f"Job {job_id} running (worker {worker_id}).")
+                self.run_job(**kwargs)
+                print(f"Job {job_id} done (worker {worker_id}).")
+
+            except mp.queues.Empty:
+                continue
+            
+            except Exception as e:
+                print(f"Worker {worker_id} encountered an error: {e}")
+                break
+
+        print(f"Worker {worker_id} stopping...")
+
+    def run(self, N: int):
+        """
+        Run N iterations of the producer-consumer process in parallel.
+        """
+        # Start worker processes
+        self.processes = []
+        for i in range(self.n_cores):
+            p = mp.Process(target=self._run_job, args=(i,))
+            p.start()
+            self.processes.append(p)
+
+        # Produce N jobs
+        for _ in range(N):
+            self._add_job()
+
+        # Wait until the queue is empty
+        while self.job_queue.qsize() > 0:
+            time.sleep(self.queue_timeout)
+
+        # Stop all processes
+        self.stop()
+
+    def stop(self):
+        """
+        Stop all worker processes.
+        """
+        self.stop_processes.value = True
+        if self.processes:
+            print("Stopping all processes...")
+            for i, p in enumerate(self.processes):
+                p.join()
+                print(f"Worker {i} stopped.")
+        self.processes = []
+
+    def __del__(self):
+        self.stop()
+
 @dataclass
 class RobotDescription(ABC):
     # Robot name
