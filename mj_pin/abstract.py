@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from functools import wraps
 from datetime import datetime
 import multiprocessing as mp
+from tqdm import tqdm
 from .ext.keyboard import KBHit
 
 class Colors():
@@ -282,18 +283,18 @@ class VisualCallback(ABC):
         """
         pass
 
-class ParallelSimulatorBase(ABC):
-    
-    def __init__(self, n_cores: int = 1):
-        self.n_cores = n_cores
-        self.job_queue = mp.Queue(maxsize=n_cores+1)
+class ParallelExecutorBase(ABC):
+    SLEEP_TIME = 0.1
+    def __init__(self, verbose: bool = False):
+        self.verbose = verbose        
+        
+    def setup(self):
         self.stop_processes = mp.Value('b', False)
-        self.job_id = 0
+        self.job_submitted = mp.Value('i', 0)
+        self.jobs_done = mp.Value('i', 0)  # Shared counter
+        self.jobs_success = mp.Value('i', 0)  # Shared counter
         self.processes = []
-        
-        self.queue_timeout = 5.
-        self.waiting_sleep_time = .1
-        
+
     @abstractmethod
     def create_job(self) -> dict:
         """
@@ -303,71 +304,108 @@ class ParallelSimulatorBase(ABC):
         pass
     
     @abstractmethod
-    def run_job(self, **kwargs):
+    def run_job(self, job_id : int, **kwargs) -> bool:
         """
         Consumer.
         Processes the job with the arguments provided.
+        Returns True if jobs succeeded.
         """
         pass
     
-    def _add_job(self) -> None:
+    def _add_job(self, job_queue) -> None:
         """
         Add a job to the workers queue.
         """
-        while self.job_queue.full():
-            time.sleep(self.waiting_sleep_time)
-            
         try:
             kwargs = self.create_job()  # Get job arguments
         except Exception as e:
+            print("Create job error.")
             print(e)
             return
             
-        self.job_queue.put((self.job_id, kwargs))
-        print("Added job", self.job_id)
-        self.job_id += 1
+        with self.job_submitted.get_lock():
+            job_id = self.job_submitted.value
+            self.job_submitted.value += 1
+        
+        job_queue.put((job_id, kwargs))
     
-    def _run_job(self, worker_id: int) -> None:
+    def _run_job(self, worker_id: int, job_queue) -> None:
         """
         Worker method that runs jobs from the queue.
         """       
         while not self.stop_processes.value:
+            success = False
             try:
-                job_id, kwargs = self.job_queue.get(block=True, timeout=self.waiting_sleep_time)
+                # Get job args in the queue
+                job_id, kwargs = job_queue.get(block=True, timeout=ParallelExecutorBase.SLEEP_TIME)
                 
-                print(f"Job {job_id} running (worker {worker_id}).")
-                self.run_job(**kwargs)
-                print(f"Job {job_id} done (worker {worker_id}).")
+                # Run jobs
+                success = self.run_job(job_id, **kwargs)
 
             except mp.queues.Empty:
-                continue
-            
+                continue  # Queue is empty, retry
+
             except Exception as e:
-                print(f"Worker {worker_id} encountered an error: {e}")
+                if self.verbose: print(f"Worker {worker_id} encountered an error: {e}")
                 break
+            
+            if self.verbose:
+                s = "succeded" if success else "failed"
+                print(f"Job {job_id} {s} (worker {worker_id}).")
+            
+            # Increment counters
+            with self.jobs_done.get_lock():
+                self.jobs_done.value += 1
+            if success:
+                with self.jobs_success.get_lock():  
+                    self.jobs_success.value += 1
 
-        print(f"Worker {worker_id} stopping...")
+    def run(self,
+            n_cores : int = 1,
+            n_jobs: Optional[int] = None,
+            n_success: Optional[int] = None):
+        """
+        Run N iterations of the producer-consumer process in parallel with a progress bar.
+        """
+        self.setup()
+        job_queue = mp.Queue(maxsize=n_cores)
 
-    def run(self, N: int):
-        """
-        Run N iterations of the producer-consumer process in parallel.
-        """
+        if n_jobs is None and n_success is None:
+            raise ValueError("Provide one argument N_jobs or N_success.")
+        
         # Start worker processes
-        self.processes = []
-        for i in range(self.n_cores):
-            p = mp.Process(target=self._run_job, args=(i,))
+        for i in range(n_cores):
+            p = mp.Process(target=self._run_job, args=(i, job_queue))
             p.start()
             self.processes.append(p)
 
-        # Produce N jobs
-        for _ in range(N):
-            self._add_job()
+        # Create tqdm progress bar
+        N_bar = n_success if n_jobs is None else n_jobs
+        desc = "Success" if n_jobs is None else "Jobs"
+        i = self.jobs_success if n_jobs is None else self.job_submitted
+        
+        try:
+            with tqdm(total=N_bar, desc=f"{desc} progress", position=0, leave=True) as pbar:
+                # Submit n_jobs
+                while i.value < N_bar:
+                    # Add job, blocking if queue is full
+                    self._add_job(job_queue)
+                    # Update tqdm bar as jobs are completed
+                    pbar.n = self.jobs_done.value  # Update progress count
+                    pbar.set_postfix_str(f"submitted: {self.job_submitted.value}, success: {self.jobs_success.value}")
+                    pbar.refresh()
+                    
+                # Finishin all the jobs
+                while self.jobs_done.value <= N_bar:
+                    pbar.n = self.jobs_done.value  # Update progress count
+                    pbar.set_postfix_str(f"submitted: {self.job_submitted.value}, success: {self.jobs_success.value}")
+                    pbar.refresh()
+                    if self.jobs_done.value == N_bar: break
+                    time.sleep(ParallelExecutorBase.SLEEP_TIME)
 
-        # Wait until the queue is empty
-        while self.job_queue.qsize() > 0:
-            time.sleep(self.queue_timeout)
+        except KeyboardInterrupt:
+            if self.verbose: print("Stop requested.")
 
-        # Stop all processes
         self.stop()
 
     def stop(self):
@@ -379,12 +417,13 @@ class ParallelSimulatorBase(ABC):
             print("Stopping all processes...")
             for i, p in enumerate(self.processes):
                 p.join()
-                print(f"Worker {i} stopped.")
+                if self.verbose: print(f"Worker {i} stopped.")
+            print("All processes stopped.")
         self.processes = []
 
     def __del__(self):
         self.stop()
-
+        
 @dataclass
 class RobotDescription(ABC):
     # Robot name
