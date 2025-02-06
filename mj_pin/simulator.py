@@ -72,6 +72,7 @@ class Simulator:
         xml_path : str,
         sim_dt : float = 1.0e-3,
         viewer_dt : float = 1/40.,
+        verbose : bool = False,
         ):
         self.sim_dt = sim_dt
         self.viewer_dt = viewer_dt
@@ -83,6 +84,7 @@ class Simulator:
         self.v0 = None
         self.mj_data = None
         self.mj_model = None
+        self.verbose = verbose
 
         # Model editor
         self.edit = ModelEditor(xml_path)
@@ -335,7 +337,7 @@ class Simulator:
 
     def save_video(self, save_path: str) -> None:        
         if not self.frames:
-            print("No frames recorded.")
+            if self.verbose: print("No frames recorded.")
             return
         
         # Check save path
@@ -360,7 +362,7 @@ class Simulator:
             out.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
         out.release()
 
-        print(f"Video saved to {save_path}")
+        if self.verbose: print(f"Video saved to {save_path}")
 
     def run(self,
             sim_time : float = 0.,
@@ -402,7 +404,7 @@ class Simulator:
             if viewer_thread: viewer_thread.join()
 
         except KeyboardInterrupt:
-            print("\nSimulation interrupted.")
+            if self.verbose: print("\nSimulation interrupted.")
             self.stop_sim = True
 
             if physics_thread.is_alive():
@@ -411,7 +413,7 @@ class Simulator:
             if viewer_thread and viewer_thread.is_alive():
                 viewer_thread.join()
 
-        print("Simulation stopped.")
+        if self.verbose: print("Simulation stopped.")
 
         if data_recorder:
             data_recorder.save()
@@ -448,7 +450,7 @@ class Simulator:
         if record_video:
             renderer = self.setup_camera_recording()
 
-        print(f"Visualizing trajectory...")
+        if self.verbose: print(f"Visualizing trajectory...")
         self.use_viewer = True
         try:
             with mujoco.viewer.launch_passive(self.mj_model, self.mj_data, show_left_ui=False, show_right_ui=False) as viewer:
@@ -488,13 +490,13 @@ class Simulator:
                         time.sleep(1)
 
         except KeyboardInterrupt:
-            print("\nTrajectory visualization interrupted.")
+            if self.verbose: print("\nTrajectory visualization interrupted.")
 
         finally:
             if record_video:
                 renderer.close()
                 self.save_video(self.vs.video_dir)
-            print("Trajectory visualization complete.")
+            if self.verbose: print("Trajectory visualization complete.")
 
 if __name__ == "__main__":
     from mj_pin.utils import get_robot_description
