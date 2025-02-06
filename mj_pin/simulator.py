@@ -14,7 +14,7 @@ from datetime import datetime
 
 from mj_pin.abstract import Controller, DataRecorder, VisualCallback
 from mj_pin.model_editor import ModelEditor
-from mj_pin.utils import pin_2_mj_qv, mj_joint_name2act_id
+from mj_pin.utils import mj_joint_name2act_id
 
 def timing_decorator(func):
     @wraps(func)
@@ -112,7 +112,6 @@ class Simulator:
     def set_initial_state(self,
                           q0 : np.ndarray = None,
                           v0 : np.ndarray = None,
-                          pin_format : bool = False,
                           key_frame_id : int = 0) -> None:
         if self.mj_data is None or self.mj_model is None:
             self._init_model_data()
@@ -120,16 +119,14 @@ class Simulator:
         # Reset to keyframe
         if q0 is None and v0 is None:
             mujoco.mj_resetDataKeyframe(self.mj_model, self.mj_data, key_frame_id)
-            self.q0, self.v0 = self.mj_data.qpos.copy(), self.mj_data.qvel.copy()
-        elif v0 is None:
-            self.v0 = np.zeros(self.mj_model.nv)
-        elif q0 is None:
-            self.q0 = np.zeros(self.mj_model.nq)
-        else:
-            if pin_format: 
-                q0, v0 = pin_2_mj_qv(q0, v0)
-            self.q0 = q0.copy()
-            self.v0 = v0.copy()
+            q0, v0 = self.mj_data.qpos.copy(), self.mj_data.qvel.copy()
+        if v0 is None:
+            v0 = np.zeros(self.mj_model.nv)
+        if q0 is None:
+            q0 = np.zeros(self.mj_model.nq)
+        
+        self.q0 = q0.copy()
+        self.v0 = v0.copy()
     
     def _reset_state(self) -> None:
         self._set_state(self.q0, self.v0)
