@@ -296,7 +296,7 @@ class ParallelExecutorBase(ABC):
         self.processes = []
 
     @abstractmethod
-    def create_job(self) -> dict:
+    def create_job(self, job_id : int) -> dict:
         """
         Producer.
         Creates arguments for the run_job method.
@@ -316,18 +316,20 @@ class ParallelExecutorBase(ABC):
         """
         Add a job to the workers queue.
         """
+        with self.job_submitted.get_lock():
+            job_id = self.job_submitted.value
+        
         try:
-            kwargs = self.create_job()  # Get job arguments
+            kwargs = self.create_job(job_id)  # Get job arguments
         except Exception as e:
             print("Create job error.")
             print(e)
             return
-            
-        with self.job_submitted.get_lock():
-            job_id = self.job_submitted.value
-            self.job_submitted.value += 1
-        
+           
         job_queue.put((job_id, kwargs))
+        
+        with self.job_submitted.get_lock():
+            self.job_submitted.value = job_id + 1
     
     def _run_job(self, worker_id: int, job_queue) -> None:
         """
