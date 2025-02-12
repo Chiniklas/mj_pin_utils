@@ -32,16 +32,18 @@ class FeetVisualCallback(VisualCallback):
         self.xml_path = xml_path
         self.mj_model = mujoco.MjModel.from_xml_path(xml_path)
         self.feet_names = feet_names
-        self.RADIUS = 0.03
+        self.radius = 0.03
 
     def add_visuals(self, mj_data):
         for i, f_name in enumerate(self.feet_names):
             pos = mj_frame_pos(self.mj_model, mj_data, f_name)
+            # Use parent class to add specific geometries.
+            # Use self.colors to easily handle colors 
             if i < 2:
-                self.add_sphere(pos, self.RADIUS, self.colors.id(i))
+                self.add_sphere(pos, self.radius, self.colors.id(i))
             else:
                 rot_euler = np.zeros(3)
-                self.add_box(pos, rot_euler, [self.RADIUS] * 3, self.colors.id(i))
+                self.add_box(pos, rot_euler, [self.radius] * 3, self.colors.BLUE)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simulate a robot with optional recording and visualization.")
