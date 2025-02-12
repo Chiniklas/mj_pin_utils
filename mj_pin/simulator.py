@@ -219,9 +219,9 @@ class Simulator:
 
         torque_ctrl = np.zeros(self.mj_model.nu)
         for joint_name, torque_value in torque_map.items():
-            torque_ctrl[
-                self.joint_name2act_id[joint_name]
-                ] = torque_value
+            joint_name = dict.get(self.joint_name2act_id, joint_name, "")
+            if joint_name:
+                torque_ctrl[joint_name] = torque_value
 
         self.mj_data.ctrl = torque_ctrl
 

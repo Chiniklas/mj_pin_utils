@@ -1,5 +1,6 @@
 import time
 import mujoco
+import pinocchio as pin
 import threading
 import numpy as np
 from typing import Dict, List, Optional, Tuple, Callable, Any
@@ -10,6 +11,7 @@ from datetime import datetime
 import multiprocessing as mp
 from tqdm import tqdm
 from .ext.keyboard import KBHit
+from .utils import mj_2_pin_qv, mj_joint_name2dof, pin_joint_name2dof
 
 class Colors():
     RED =     (1.0, 0.0, 0.0, 1.)
@@ -59,7 +61,41 @@ class Controller(ABC):
     def __init__(self) -> None:
         # Stop simulation if diverged
         self.diverged : bool = False
+        self.joint_name2dof = {}
+        self.torques_dof = None
+        
+    def get_torque_map(self) -> Dict[str, float]:
+        torque_map = {
+            j_name : self.torques_dof[dof_id]
+            for j_name, dof_id
+            in self.joint_name2dof.items()
+        }
+        return torque_map
+        
+    @abstractmethod
+    def get_torques(
+        self,
+        sim_step : int,
+        mj_data,
+    ) -> Dict[str, float]:
+        pass
 
+class MjController(Controller):
+    def __init__(self, xml_path : str) -> None:
+        super().__init__()
+        mj_model = mujoco.MjModel.from_xml_path(xml_path)
+        self.nu = mj_model.nu
+        self.joint_name2dof = mj_joint_name2dof(mj_model)
+        self.torques_dof = np.zeros(mj_model.nv) 
+
+    def get_torque_map(self) -> Dict[str, float]:
+        torque_map = {
+            j_name : self.torques_dof[dof_id]
+            for j_name, dof_id
+            in self.joint_name2dof.items()
+        }
+        return torque_map
+    
     def get_state(self, mj_data) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get state in mujoco format from mujoco data.
@@ -82,7 +118,7 @@ class Controller(ABC):
         v = mj_data.qvel.copy()
 
         return q, v
-        
+    
     @abstractmethod
     def get_torques(
         self,
@@ -91,6 +127,67 @@ class Controller(ABC):
     ) -> Dict[str, float]:
         pass
 
+class PinController(Controller):
+
+    def __init__(self,
+                 urdf_path : Optional[str] = "",
+                 pin_model: Optional[pin.Model] = None,
+                 floating_base_quat : bool = False,
+                 floating_base_euler : bool = False):
+        super().__init__()
+
+        if not urdf_path and pin_model is None:
+            raise ValueError("PinController: Provide at least a pinocchio model or URDF path.")
+        
+        if pin_model is not None:
+            self.pin_model = pin_model
+        else:
+            self.urdf_path = urdf_path
+
+            if floating_base_quat:
+                root = pin.JointModelFreeFlyer()
+                self.pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
+            elif floating_base_euler:
+                root = pin.JointModelComposite(2)
+                root.addJoint(pin.JointModelTranslation())
+                root.addJoint(pin.JointModelSphericalZYX())
+                self.pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
+            else:
+                self.pin_model = pin.buildModelFromUrdf(urdf_path)
+
+        self.pin_data = pin.Data(self.pin_model)
+
+        self.nq = self.pin_model.nq
+        self.nv = self.pin_model.nv
+        self.nu = len([j for j in self.pin_model.joints 
+                       if j.id < self.nv and j.nv == 1])
+
+        self.joint_name2dof = pin_joint_name2dof(self.pin_model)
+        self.torques_dof = np.zeros(self.nv)
+        
+    def get_state(self, mj_data) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Get state in pinocchio format from mujoco data.
+
+        q : [
+             x, y, z,
+             qx, qy, qz, qw
+             j1, ..., je,
+            ]
+        
+        v : [
+             vx, vy, vz, (local frame)
+             wx, wy, wz, (local frame)
+             vj1, ..., vje,
+            ]
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: q [nq], v [nv]
+        """
+        q_pin, v_pin = mj_2_pin_qv(mj_data.qpos.copy(), mj_data.qvel.copy())
+
+        return q_pin, v_pin
+    
 class Keyboard(ABC):
     KEYBOARD_UPDATE_FREQ = 50
 
@@ -425,18 +522,3 @@ class ParallelExecutorBase(ABC):
 
     def __del__(self):
         self.stop()
-        
-@dataclass
-class RobotDescription(ABC):
-    # Robot name
-    name : str
-    # MuJoCo model path (id loaded)
-    xml_path : str = ""
-    # Pinocchio model path (if loaded)
-    urdf_path : str = ""
-    # Scene path 
-    xml_scene_path : str = ""
-    # End-effectors frame name
-    eeff_frame_name : Optional[List[str]] = None
-    # Nominal configuration
-    q0 : Optional[np.ndarray] = None

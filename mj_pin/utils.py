@@ -5,11 +5,26 @@ import mujoco
 import pinocchio as pin
 import os
 import importlib
-
-from mj_pin.abstract import Controller, RobotDescription
+from abc import ABC
+from dataclasses import dataclass
 
 MJ2PIN_QUAT = [1,2,3,0]
 PIN2MJ_QUAT = [3,0,1,2]
+
+@dataclass
+class RobotDescription(ABC):
+    # Robot name
+    name : str
+    # MuJoCo model path (id loaded)
+    xml_path : str = ""
+    # Pinocchio model path (if loaded)
+    urdf_path : str = ""
+    # Scene path 
+    xml_scene_path : str = ""
+    # End-effectors frame name
+    eeff_frame_name : Optional[List[str]] = None
+    # Nominal configuration
+    q0 : Optional[np.ndarray] = None
 
 def _path_scene_with_floor(path_mjcf : str) -> str:
     """
@@ -90,29 +105,6 @@ def get_robot_description(robot_name : str) -> RobotDescription:
 
     return robot_desc
 
-def mj_joint_name2id(mj_model) -> Dict[str, int]:
-    """
-    Init joint name to id map.
-    """
-    mj_joint_name2id = {
-        mj_model.joint(i).name : mj_model.joint(i).id
-        for i in range(mj_model.njnt)
-        # No root joint
-        if mj_model.jnt_type[i] != 0
-    }
-    return mj_joint_name2id
-    
-def mj_joint_name2act_id(mj_model) -> Dict[str, int]:
-
-    joint_name2act_id = {
-        mj_model.joint(
-            mj_model.actuator(i).trnid[0] # Joint id
-        ).name : mj_model.actuator(i).id
-        for i in range(mj_model.nu)
-    }
-
-    return joint_name2act_id
-
 def mj_body_pos(mj_model, mj_data, frame_name: str) -> np.ndarray:
     """
     Get the body position for a given frame name in MuJoCo.
@@ -135,37 +127,20 @@ def mj_frame_pos(mj_model, mj_data, frame_name: str) -> np.ndarray:
     frame_pos = mj_data.geom_xpos[geom_id]
     return frame_pos
 
-
-def pin_joint_name2id(pin_model) -> Dict[str, int]:
+def pin_joint_name2dof(model) -> Dict[str, int]:
     """
-    Init joint name to id map.
+    Get joint name to DOF index map.
     """
-    pin_n_joints = len(pin_model.joints)
-    pin_joint_name2id = {
-        pin_model.names[i] : i
-        for i in range(pin_n_joints)
-        if (# Only 1 DoF joints (no root joint)
-            pin_model.joints[i].nq == 1 and 
-                # No universe joint or ill-defined joints
-            pin_model.joints[i].id <= pin_n_joints)
-    }
-    return pin_joint_name2id
+    pin_joint_name2dof = {}
 
-def pin_joint_name2act_id(pin_model) -> Dict[str, int]:
-    # Get joint id to name map sorted by index
-    joint_name2id = pin_joint_name2id(pin_model)
-    pin_joint_id2name = {
-        i : name
-        for name, i
-        in joint_name2id.items() 
-    }
+    for joint_id in range(1, model.njoints):  # Skip the universe joint (id=0)
+        joint_name = model.names[joint_id]
+        joint = model.joints[joint_id]
+        # Check if the joint is actuated (not a fixed joint)
+        if joint.nv > 0:  # Joint has configuration variables
+            pin_joint_name2dof[joint_name] = joint.idx_v  # DOF index
 
-    # Map to joints
-    pin_joint_name2act_id = {
-        name : i 
-        for i, name in enumerate(pin_joint_id2name.values())
-    }
-    return pin_joint_name2act_id
+    return pin_joint_name2dof
 
 def pin_frame_pos(pin_model, pin_data, frame_name: str) -> np.ndarray:
     """
@@ -185,27 +160,23 @@ def pin_frame_pos(pin_model, pin_data, frame_name: str) -> np.ndarray:
     frame_pos = pin_data.oMf[frame_id].translation
     return frame_pos
 
-def mj_joint_name2id(mj_model) -> Dict[str, int]:
+def mj_joint_name2dof(mj_model) -> Dict[str, int]:
     """
-    Init joint name to id map.
+    Get joint name to DOF index map.
     """
-    mj_joint_name2id = {
-        mj_model.joint(i).name : mj_model.joint(i).id
-        for i in range(mj_model.njnt)
-        # No root joint
-        if mj_model.jnt_type[i] != 0
+    mj_joint_name2dof = {
+        mj_model.joint(i_jnt).name : mj_model.joint(i_jnt).dofadr
+        for i_jnt
+        in range(mj_model.njnt) # Actuated joints
     }
-    return mj_joint_name2id
+    return mj_joint_name2dof
     
 def mj_joint_name2act_id(mj_model) -> Dict[str, int]:
-
     joint_name2act_id = {
-        mj_model.joint(
-            mj_model.actuator(i).trnid[0] # Joint id
-        ).name : mj_model.actuator(i).id
+        mj_model.joint(mj_model.actuator_trnid[i, 0]).name # Joint name
+        : i # act id
         for i in range(mj_model.nu)
     }
-
     return joint_name2act_id
 
 def mj_body_pos(mj_model, mj_data, frame_name: str) -> np.ndarray:
@@ -297,74 +268,6 @@ def pin_2_mj_qv(q_pin : np.ndarray, v_pin : np.ndarray) -> np.ndarray:
     v_mj = v_pin.copy()
     v_mj[:3] = p_skew @ R @ v_pin[3:6] + R @ v_pin[:3]
     return q_mj, v_mj
-
-class PinController(Controller):
-
-    def __init__(self,
-                 urdf_path : Optional[str] = "",
-                 pin_model: Optional[pin.Model] = None,
-                 floating_base_quat : bool = False,
-                 floating_base_euler : bool = False):
-        super().__init__()
-
-        if not urdf_path and pin_model is None:
-            raise ValueError("PinController: Provide at least a pinocchio model or URDF path.")
-        
-        if pin_model is not None:
-            self.pin_model = pin_model
-        else:
-            self.urdf_path = urdf_path
-
-            if floating_base_quat:
-                root = pin.JointModelFreeFlyer()
-                self.pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
-            elif floating_base_euler:
-                root = pin.JointModelComposite(2)
-                root.addJoint(pin.JointModelTranslation())
-                root.addJoint(pin.JointModelSphericalZYX())
-                self.pin_model = pin.buildModelFromUrdf(urdf_path, root_joint=root)
-            else:
-                self.pin_model = pin.buildModelFromUrdf(urdf_path)
-
-        self.pin_data = pin.Data(self.pin_model)
-
-        self.nq = self.pin_model.nq
-        self.nv = self.pin_model.nv
-        self.nu = len([j for j in self.pin_model.joints 
-                       if j.id < self.nv and j.nv == 1])
-
-        self.joint_name2act_id = pin_joint_name2act_id(self.pin_model)
-
-    def get_state(self, mj_data) -> Tuple[np.ndarray, np.ndarray]:
-        """
-        Get state in pinocchio format from mujoco data.
-
-        q : [
-             x, y, z,
-             qx, qy, qz, qw
-             j1, ..., je,
-            ]
-        
-        v : [
-             vx, vy, vz, (local frame)
-             wx, wy, wz, (local frame)
-             vj1, ..., vje,
-            ]
-
-        Returns:
-            Tuple[np.ndarray, np.ndarray]: q [nq], v [nv]
-        """
-        q_pin, v_pin = mj_2_pin_qv(mj_data.qpos.copy(), mj_data.qvel.copy())
-
-        return q_pin, v_pin
-        
-    def create_torque_map(self, torques : np.ndarray) -> Dict[str, float]:
-        torque_map = {
-            j_name : torques[joint_id]
-            for j_name, joint_id
-            in self.joint_name2act_id.items()
-        }
-        return torque_map
 
 def add_frames_from_mujoco(
     pin_model, 
