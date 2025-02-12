@@ -107,7 +107,14 @@ if __name__ == "__main__":
     record_freq = 10
     record_state_data = StateDataRecorder("./data", record_freq)
 
-    # Run the simulation with the provided controller etc.
+    # Run the simulation for 4 seconds
     # The data is automatically saved at the end.
-    sim.run(controller=pd_controller,
+    sim.run(sim_time=4.,
+            controller=pd_controller,
             data_recorder=record_state_data)
+    
+    # Visualize recorded trajectory
+    print("Replaying recording...")
+    q_traj = np.array(record_state_data.data["q"])
+    time_traj = np.array(record_state_data.data["time"])
+    sim.visualize_trajectory(q_traj, time_traj)
