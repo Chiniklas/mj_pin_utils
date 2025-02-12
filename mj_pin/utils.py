@@ -390,3 +390,29 @@ def get_skew_sim_mat(v : np.ndarray) -> np.ndarray:
         [-v[1],  v[0],    0.,],
     ])
     return M
+
+def quat_from_euler(roll, pitch, yaw):
+    """
+    Convert an Euler angle to a quaternion.
+
+    Input
+    :param roll: The roll (rotation around x-axis) angle in radians.
+    :param pitch: The pitch (rotation around y-axis) angle in radians.
+    :param yaw: The yaw (rotation around z-axis) angle in radians.
+
+    Output
+    :return qx, qy, qz, qw: The orientation in quaternion [x,y,z,w] format
+    """
+    sin_roll = np.sin(roll / 2)
+    cos_roll = np.cos(roll / 2)
+    sin_pitch = np.sin(pitch / 2)
+    cos_pitch = np.cos(pitch / 2)
+    sin_yaw = np.sin(yaw / 2)
+    cos_yaw = np.cos(yaw / 2)
+
+    qx = sin_roll * cos_pitch * cos_yaw - cos_roll * sin_pitch * sin_yaw
+    qy = cos_roll * sin_pitch * cos_yaw + sin_roll * cos_pitch * sin_yaw
+    qz = cos_roll * cos_pitch * sin_yaw - sin_roll * sin_pitch * cos_yaw
+    qw = cos_roll * cos_pitch * cos_yaw + sin_roll * sin_pitch * sin_yaw
+
+    return np.array([qx, qy, qz, qw])

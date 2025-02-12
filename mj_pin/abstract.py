@@ -11,7 +11,7 @@ from datetime import datetime
 import multiprocessing as mp
 from tqdm import tqdm
 from .ext.keyboard import KBHit
-from .utils import mj_2_pin_qv, mj_joint_name2dof, pin_joint_name2dof
+from .utils import mj_2_pin_qv, mj_joint_name2dof, pin_joint_name2dof, quat_from_euler
 
 class Colors():
     RED =     (1.0, 0.0, 0.0, 1.)
@@ -297,7 +297,7 @@ class VisualCallback(ABC):
             viewer: MuJoCo viewer instance.
             geom_type: Geometry type (e.g., `mujoco.mjtGeom.mjGEOM_SPHERE`).
             pos: Position of the geometry in world coordinates.
-            rot: Rotation matrix (3x3) as a flattened array.
+            rot: Rotation matrix (3x3).
             size: Size of the geometry (array-like).
             rgba: RGBA rgba of the geometry.
         """
@@ -328,21 +328,24 @@ class VisualCallback(ABC):
             rgba=rgba,
         )
 
-    def add_box(self, pos, rot, size, rgba):
+    def add_box(self, pos, rot_euler, size, rgba):
         """
         Add a box to the viewer's scene.
 
         Args:
             viewer: MuJoCo viewer instance.
             pos: Position of the box in world coordinates.
-            rot: Rotation matrix (3x3) as a flattened array.
+            rot: Rotation euler rpy.
             size: Dimensions of the box (length, width, height).
             rgba: RGBA rgba of the box.
         """
+        quat = quat_from_euler(*rot_euler)
+        rot_matrix = np.zeros(9)
+        mujoco.mju_quat2Mat(rot_matrix, quat)
         self._add_geom(
             geom_type=mujoco.mjtGeom.mjGEOM_BOX,
             pos=pos,
-            rot=rot,
+            rot=rot_matrix,
             size=size,
             rgba=rgba,
         )
