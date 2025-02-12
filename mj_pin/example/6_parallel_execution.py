@@ -49,7 +49,7 @@ if __name__ == "__main__":
         def run_job(self, job_id, **kwargs) -> bool:
             q_ref = kwargs.get("q_ref")
             # Create pd controller with global variable xml_path
-            pd_controller = MjPDController(robot_description.xml_path)
+            pd_controller = MjPDController(robot_description.xml_path, self.Kp, self.Kd)
             # Set q_ref
             pd_controller.q_ref = q_ref[-pd_controller.nu:]
             
