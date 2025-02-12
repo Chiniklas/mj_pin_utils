@@ -47,8 +47,6 @@ class FeetVisualCallback(VisualCallback):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simulate a robot with optional recording and visualization.")
-    parser.add_argument("--record_video", action="store_true", help="Record a video of the simulation.")
-    parser.add_argument("--record_data", action="store_true", help="Record simulation data.")
     parser.add_argument("--robot_name", type=str, default="go2", help="Name of the robot to simulate.")
     args = parser.parse_args()
 
