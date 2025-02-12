@@ -67,3 +67,11 @@ if __name__ == "__main__":
         
     # Run the simulation with the provided controller etc.
     sim.run(controller=pd_controller)
+    
+    # Set different initial state
+    print("Running with a different intial state")
+    q0, v0 = sim.get_initial_state()
+    q0[2] += 1.
+    sim.set_initial_state(q0, v0)
+    sim.run(controller=pd_controller)
+    
