@@ -150,13 +150,16 @@ class Simulator:
         self.stop_sim = False
         self.use_viewer = False
         self.collided = False
+        
+        # Init model and data
+        self._init_model_data()
 
         # Record video
         self.rendering_cam = None
         self.renderer = None
         self.frames = []
-        # Init model and data
-        self._init_model_data()
+        self.setup_camera_recording()
+
         # Collision
         self.allowed_collision = []
         
@@ -175,11 +178,12 @@ class Simulator:
         if self.mj_model.vis.global_.offheight < self.vs.height:
             self.mj_model.vis.global_.offheight = self.vs.height
 
-        renderer = mujoco.Renderer(self.mj_model, self.vs.height, self.vs.width)
         self.rendering_cam = mujoco.MjvCamera()
         if self.vs is None: self.vs = VideoSettings()
 
-        return renderer 
+    def get_renderer(self):
+        renderer = mujoco.Renderer(self.mj_model, self.vs.height, self.vs.width)
+        return renderer
 
     def _update_camera_position(self, viewer) -> None:
 
@@ -231,7 +235,7 @@ class Simulator:
     def _run_physics(self, controller : Controller, data_recorder : DataRecorder):
         if self.record_video:
             with self.__locker:
-                renderer = self.setup_camera_recording()
+                renderer = self.get_renderer()
                 
         if data_recorder: data_recorder.reset()
 
@@ -284,7 +288,7 @@ class Simulator:
         self.viewer_step += 1
 
     def _record_frame(self, renderer, viewer) -> float:
-        if len(self.frames) < self.mj_data.time * self.vs.fps * self.vs.playback_speed:
+        if len(self.frames) < self.mj_data.time * self.vs.fps / self.vs.playback_speed:
             self._update_camera_position(viewer)
             renderer.update_scene(self.mj_data, self.rendering_cam)
             pixels = renderer.render()
@@ -445,7 +449,7 @@ class Simulator:
         dt_traj = np.diff(time_traj, append=0.)
 
         if record_video:
-            renderer = self.setup_camera_recording()
+            renderer = self.get_renderer()
 
         if self.verbose: print(f"Visualizing trajectory...")
         self.use_viewer = True
