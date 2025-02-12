@@ -1,5 +1,5 @@
 import time
-from typing import Dict, List, Optional, Union
+from typing import Tuple, List, Optional, Union
 import mujoco.memory_leak_test
 import numpy as np
 import mujoco
@@ -108,6 +108,11 @@ class Simulator:
         now = datetime.now()
         date_time = now.strftime("%m_%d_%Y_%H_%M_%S")
         return date_time
+    
+    def get_initial_state(self) -> Tuple[np.ndarray, np.ndarray]:
+        # Init initial states if not intialized
+        self.set_initial_state(self.q0, self.v0)
+        return self.q0.copy(), self.v0.copy()
     
     def set_initial_state(self,
                           q0 : np.ndarray = None,
