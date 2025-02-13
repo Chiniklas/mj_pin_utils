@@ -141,6 +141,8 @@ python3 example/6_parallel_execution.py
 
 ## To Do
 
+- [ ] pip/conda installation
+- [ ] use other simulators (MJX, genesis)
 
 - **Simulator**
   - [ ] Random perturbations
