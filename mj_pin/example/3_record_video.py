@@ -91,7 +91,7 @@ if __name__ == "__main__":
     # Run the simulation with the provided controller etc.
     # The data is automatically saved at the end.
     use_viewer = not args.track_base
-    sim.run(sim_time=2. if use_viewer else 0.,
+    sim.run(sim_time=0. if use_viewer else 4.,
             controller=pd_controller,
             record_video=True,
             use_viewer=use_viewer)
