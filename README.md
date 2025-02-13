@@ -63,15 +63,15 @@ sim.run()
 So far, nothing actuates the robot. Define your own controller by inheriting the [`Controller`](mj_pin/abstract.py) class. One just needs to override the `get_torques(self, sim_step, mj_data)` method. This method is called each physics step in the simulator. This method should return a dictionary `{joint name : torque value}`. One can use methods from the base class to do so:
 
 - use `q, v = self.get_state(mj_data)` to get the position and velocity of your degrees of freedom (DoF).
-- fill the `self.torques_dof` with the desired torque values on all the DoF (only actuated ones will be used in the simulator).
+- fill the `self.torques_dof` with the desired torque values on **all the DoF** (only actuated ones will be used in the simulator).
 - then, `torque_map = self.get_torque_map()` returns the desired dictionary.
 
 See `example/0_pd_controller.py` as an example. In this framework, using a controller based on a pinocchio model is simplified, as shown in the example.
 ```sh
 cd mj_pin/example
-# PD controller based on MuJoCo description
+# PD controller based on MuJoCo model
 python3 0_pd_controller.py --robot_name go2
-# PD controller based on Pinocchio description
+# PD controller based on Pinocchio model
 python3 0_pd_controller.py --robot_name go2 --pin
 ```
 
@@ -105,7 +105,7 @@ See `example/3_record_video.py` as an example.
 ```sh
 # Record with the viewer, track the user camera motion 
 python3 3_record_video.py
-# Record with viewer, track the base position
+# Record without viewer, track the base position
 python3 3_record_video.py --track_base
 ```
 
@@ -120,7 +120,7 @@ python3 example/4_model_editing.py
 
 ### Collision
 
-In some cases, the simulation should be stopped as soon as the robot collides. Define a list of all the geometries (name or id in mujoco) that are allowed to collide and pass it to the simulator. The simulation will stop if there is a geometry that is not in this list but in a contact pair.
+In some cases, the simulation should be stopped as soon as the robot collides. Define a list of all the geometries (name or id in the MuJoCo model) that are allowed to collide and pass it to the simulator. The simulation will stop if there is a geometry that is not in this list but in a contact pair.
 
 See `example/5_collision.py` as an example.
 ```sh
@@ -129,10 +129,10 @@ python3 example/5_collision.py
 
 ### Parallel execution
 
-To make a data collection faster, one could run several simulations in parallel. Define your own [`ParallelExecutorBase`](mj_pin/abstract.py) class to do so. The `create_job(self, id_job)`, `run_job(self, id_job, **kwargs)` methods need to be inherited. The parallel executor is based on a producer/consumer architecture:
+To make a data collection process faster, one could run several simulations in parallel. Define your own [`ParallelExecutorBase`](mj_pin/abstract.py) class to do so. The `create_job(self, id_job)`, `run_job(self, id_job, **kwargs)` methods need to be inherited. The parallel executor is based on a producer/consumer architecture:
 
-- `create_job` returns a set of arguments (as a dictionary) that are needed to run a job (like different goals for instance). The jobs are added to a queue shared between processes.
-- `run_job` executes the job (for instance run the simulation) by taking the arguments from the queue (passed in `**kwargs`). It should return a boolean if the jobs succeeded.
+- `create_job` returns a set of arguments (as a dictionary) that are needed to run a job (e.g. different goals). The jobs are added to a queue shared between processes.
+- `run_job` executes the jobs in parallel (e.g. run the simulation) by taking the arguments from the queue (passed in `**kwargs`). It should return a boolean if the jobs succeeded.
 
 See `example/6_parallel_execution.py` as an example. `create_job` computes random PD target. `run_job` runs the simulation with a PD controller and the produced PD target.
 ```sh
