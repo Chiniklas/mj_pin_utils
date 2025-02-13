@@ -88,14 +88,6 @@ class MjController(Controller):
         self.joint_name2dof = mj_joint_name2dof(mj_model)
         self.torques_dof = np.zeros(mj_model.nv) 
 
-    def get_torque_map(self) -> Dict[str, float]:
-        torque_map = {
-            j_name : self.torques_dof[dof_id]
-            for j_name, dof_id
-            in self.joint_name2dof.items()
-        }
-        return torque_map
-    
     def get_state(self, mj_data) -> Tuple[np.ndarray, np.ndarray]:
         """
         Get state in mujoco format from mujoco data.
