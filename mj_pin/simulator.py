@@ -101,7 +101,8 @@ class Simulator:
             self.set_initial_state()
 
         self._reset_state()
-        self.joint_name2act_id = mj_joint_name2act_id(self.mj_model)
+        joint_name2act_id = mj_joint_name2act_id(self.mj_model)
+        self.act_id2joint_name = {v: k for k, v in joint_name2act_id.items()}
     
     @staticmethod
     def get_date_time_str() -> str:
@@ -226,12 +227,10 @@ class Simulator:
         # joint name : torque value
         torque_map = controller.get_torques(self.sim_step, self.mj_data)
 
-        torque_ctrl = np.zeros(self.mj_model.nu)
-        for joint_name, torque_value in torque_map.items():
-            joint_name = dict.get(self.joint_name2act_id, joint_name, "")
-            if joint_name:
-                torque_ctrl[joint_name] = torque_value
-
+        torque_ctrl = np.array([
+            dict.get(torque_map, name, 0.)
+            for name in self.act_id2joint_name.values()
+        ])
         self.mj_data.ctrl = torque_ctrl
 
     def _record_data_step(self, data_recorder : DataRecorder) -> None:

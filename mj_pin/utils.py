@@ -137,7 +137,7 @@ def pin_joint_name2dof(model) -> Dict[str, int]:
         joint_name = model.names[joint_id]
         joint = model.joints[joint_id]
         # Check if the joint is actuated (not a fixed joint)
-        if joint.nv > 0:  # Joint has configuration variables
+        if joint.nv == 1:  # Joint has configuration variables
             pin_joint_name2dof[joint_name] = joint.idx_v  # DOF index
 
     return pin_joint_name2dof
