@@ -11,17 +11,13 @@ class MjPDController(MjController):
         self.Kp, self.Kd = Kp, Kd
         self.q_ref = None
 
-    def get_torques(self, sim_step, mj_data):
+    def compute_torques_dof(self, mj_data):
         # Get pos, vel state
         q, v = self.get_state(mj_data)
         # Set reference as the first state
         if self.q_ref is None: self.q_ref = q[-self.nu:].copy()
         # Update torques_dof
         self.torques_dof[-self.nu:] = self.Kp * (self.q_ref - q[-self.nu:]) - self.Kd * v[-self.nu:]
-        # torque map {joint name : torque value}
-        torque_map = self.get_torque_map()
-        
-        return torque_map
     
 class PinPDController(PinController):
     def __init__(self, urdf_path, Kp = 44., Kd = 3.):
@@ -29,17 +25,13 @@ class PinPDController(PinController):
         self.Kp, self.Kd = Kp, Kd
         self.q_ref = None
     
-    def get_torques(self, sim_step, mj_data):
+    def compute_torques_dof(self, mj_data):
         # Get pos, vel state (in pinocchio format)
         q, v = self.get_state(mj_data)
         # Set reference as the first state
         if self.q_ref is None: self.q_ref = q[-self.nu:].copy()
         # Update torques_dof
         self.torques_dof[-self.nu:] = self.Kp * (self.q_ref - q[-self.nu:]) - self.Kd * v[-self.nu:]
-        # torque map {joint name : torque value}
-        torque_map = self.get_torque_map()
-        
-        return torque_map
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Simulate a robot with optional recording and visualization.")

@@ -60,11 +60,9 @@ sim.run()
 
 ### Controller
 
-So far, nothing actuates the robot. Define your own controller by inheriting the [`Controller`](mj_pin/abstract.py) class. One just needs to override the `get_torques(self, sim_step, mj_data)` method. This method is called each physics step in the simulator. This method should return a dictionary `{joint name : torque value}`. One can use methods from the base class to do so:
+So far, nothing actuates the robot. Define your own controller by inheriting the [`Controller`](mj_pin/abstract.py) class. One just needs to override the `compute_torques_dof(self, mj_data)` method. This method is called each physics step in the simulator. This method should update `self.torques_dof` with the desired torque values on **all the DoF** (only actuated ones will be used in the simulator). One can use methods from the base class to do so:
 
 - use `q, v = self.get_state(mj_data)` to get the position and velocity of your degrees of freedom (DoF).
-- fill the `self.torques_dof` with the desired torque values on **all the DoF** (only actuated ones will be used in the simulator).
-- then, `torque_map = self.get_torque_map()` returns the desired dictionary.
 
 See `example/0_pd_controller.py` as an example. In this framework, using a controller based on a pinocchio model is simplified, as shown in the example.
 ```sh

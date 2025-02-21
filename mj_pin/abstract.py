@@ -73,12 +73,16 @@ class Controller(ABC):
         return torque_map
         
     @abstractmethod
+    def compute_torques_dof(self, mj_data) -> None:
+        "Update torques_dof"
+        
     def get_torques(
         self,
         sim_step : int,
         mj_data,
     ) -> Dict[str, float]:
-        pass
+        self.compute_torques_dof(mj_data)
+        return self.get_torque_map()
 
 class MjController(Controller):
     def __init__(self, xml_path : str) -> None:
@@ -110,14 +114,6 @@ class MjController(Controller):
         v = mj_data.qvel.copy()
 
         return q, v
-    
-    @abstractmethod
-    def get_torques(
-        self,
-        sim_step : int,
-        mj_data,
-    ) -> Dict[str, float]:
-        pass
 
 class PinController(Controller):
 
