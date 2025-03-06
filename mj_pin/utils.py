@@ -415,4 +415,4 @@ def quat_from_euler(roll, pitch, yaw):
     qz = cos_roll * cos_pitch * sin_yaw - sin_roll * sin_pitch * cos_yaw
     qw = cos_roll * cos_pitch * cos_yaw + sin_roll * sin_pitch * sin_yaw
 
-    return np.array([qx, qy, qz, qw])
+    return np.array([qw, qx, qy, qz])
