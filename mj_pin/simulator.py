@@ -253,14 +253,14 @@ class Simulator:
                 
                 # Check for collision
                 self._check_collision()
-                
-                # Record data
-                if data_recorder:
-                    self._record_data_step(data_recorder)
 
                 # Compute torques and set torques
                 if controller is not None:
                     self._control_step(controller)
+
+                # Record data
+                if data_recorder:
+                    self._record_data_step(data_recorder)
 
                 # TODO: Apply external forces
 
