@@ -74,6 +74,7 @@ class ModelEditor():
             euler=euler,
             rgba=rgba,
             name=name if name else "box",
+            allow_collision=allow_collision,
         )
 
     def add_sphere(
@@ -99,6 +100,7 @@ class ModelEditor():
             euler=euler,
             rgba=rgba,
             name=name if name else "sphere",
+            allow_collision=allow_collision
         )
 
     def add_cylinder(
@@ -125,6 +127,7 @@ class ModelEditor():
             euler=euler,
             rgba=rgba,
             name=name if name else "cylinder",
+            allow_collision=allow_collision,
         )
     
     def get_body(
@@ -164,6 +167,8 @@ class ModelEditor():
             
             del self.id2name[id]
             del self.name2id[name]
+            if name in self.name_allowed_collisions:
+                self.name_allowed_collisions.remove(name)
 
     def move(
         self, 
@@ -224,7 +229,8 @@ if __name__ == "__main__":
         pos,
         radius,
         color="blue",
-        name="sphere"
+        name="sphere",
+        allow_collision=True,
    )
     pos = np.array([-1., -1., 1.])
     radius = 0.3
