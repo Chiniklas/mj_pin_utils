@@ -91,6 +91,22 @@ class Simulator:
 
         # Threading for physics and viewer
         self.__locker = threading.RLock()
+        
+        # for force perturbation
+        self.apply_force = False
+        self.force_start_step = 1000  # when to start applying (in sim steps)
+        self.force_end_step = 1500    # when to stop
+        self.force_vec = np.array([50.0, 0.0, 0.0, 0.0, 0.0, 0.0])  # Fx, Fy, Fz, Tx, Ty, Tz
+        self.force_body_name = "base" 
+        self.visualize_force = True
+        self._force_vec = np.zeros(6)
+        self._force_body_id = -1
+
+        # for applying multiple force perturbations
+        self.force_schedules = []  # Each element is (start_step, end_step, force_vec)
+
+        # for debugging
+        self.pause_once = False
 
     def _init_model_data(self) -> None:
         self.mj_model = self.edit.get_model()
@@ -159,6 +175,14 @@ class Simulator:
         
         # Init model and data
         self._init_model_data()
+        
+        self._force_body_id = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_BODY, self.force_body_name)
+        if self._force_body_id == -1:
+            print(f"[Error] Force body '{self.force_body_name}' not found in model!")
+        else: 
+            if self.apply_force:
+                print(f"[OK] Force will be applied to body ID {self._force_body_id}")
+
 
         # Record video
         self.rendering_cam = None
@@ -224,6 +248,9 @@ class Simulator:
             self.rendering_cam.lookat = obj_pose
 
     def _control_step(self, controller : Controller) -> None:
+        # test contact planner
+        # contact_seq = controller.contact_planner.get_contacts()
+        
         # joint name : torque value
         torque_map = controller.get_torques(self.sim_step, self.mj_data)
 
@@ -262,7 +289,50 @@ class Simulator:
                 if data_recorder:
                     self._record_data_step(data_recorder)
 
-                # TODO: Apply external forces
+                # Apply external force to base
+                self.visualize_force = True
+                self._force_vec = self.force_vec.copy()
+                self._force_body_id = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_BODY, self.force_body_name)
+                
+                # apply only one force
+                if self.apply_force and self.force_start_step <= self.sim_step < self.force_end_step:
+                    base_id = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_BODY, self.force_body_name)
+                    if base_id >= 0:
+                        self.mj_data.xfrc_applied[base_id] = self.force_vec.copy()
+                        self.visualize_force = True
+                        self._force_vec = self.force_vec.copy()
+                        self._force_body_id = base_id
+                else:
+                    base_id = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_BODY, self.force_body_name)
+                    if base_id >= 0:
+                        self.mj_data.xfrc_applied[base_id] = np.zeros(6)
+                    self.visualize_force = False
+                
+                ## apply a force schedule
+                # # ====== Force Perturbation Step ======
+                # if self.apply_force:
+                #     force_applied = False
+                #     for start_step, end_step, vec in self.force_schedules:
+                #         if start_step <= self.sim_step < end_step:
+                #             body_id = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_BODY, self.force_body_name)
+                #             if body_id >= 0:
+                #                 self.mj_data.xfrc_applied[body_id] = vec.copy()
+                #                 self.visualize_force = True
+                #                 self._force_vec = vec.copy()
+                #                 self._force_body_id = body_id
+                #                 force_applied = True
+                #                 break
+                #     if not force_applied:
+                #         body_id = mujoco.mj_name2id(self.mj_model, mujoco.mjtObj.mjOBJ_BODY, self.force_body_name)
+                #         if body_id >= 0:
+                #             self.mj_data.xfrc_applied[body_id] = np.zeros(6)
+                #         self.visualize_force = False
+
+                # NOTE: for debugging
+                if self.pause_once:
+                    print("Paused for debugging. Press Enter to continue...")
+                    input()
+                    self.pause_once = False 
 
                 # Apply control
                 mujoco.mj_step2(self.mj_model, self.mj_data)            
