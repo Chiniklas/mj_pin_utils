@@ -260,8 +260,13 @@ class Simulator:
         ])
         self.mj_data.ctrl = torque_ctrl
 
-    def _record_data_step(self, data_recorder : DataRecorder) -> None:
-        data_recorder._record(self.sim_step, self.mj_data)
+    # def _record_data_step(self, data_recorder : DataRecorder) -> None:
+    #     data_recorder._record(self.sim_step, self.mj_data)
+        
+    def _record_data_step(self, data_recorder: DataRecorder, controller: Controller) -> None:
+        is_expert = 1 if hasattr(controller, "mpc_active") and controller.mpc_active else 0
+        data_recorder.record(self.mj_data, is_expert=is_expert)
+
 
     def _run_physics(self, controller : Controller, data_recorder : DataRecorder):
         if self.record_video:
@@ -287,7 +292,8 @@ class Simulator:
 
                 # Record data
                 if data_recorder:
-                    self._record_data_step(data_recorder)
+                    # self._record_data_step(data_recorder)
+                    self._record_data_step(data_recorder, controller)
 
                 # Apply external force to base
                 self.visualize_force = True
